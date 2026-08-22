@@ -15,7 +15,7 @@ Non-goals for the first release:
 ## Components
 
 ```text
-Settings UI / HTTP API
+Sidebar / Settings UI / HTTP API
           │
           ▼
  AutomationService ─── ProjectPolicy
@@ -27,6 +27,10 @@ Settings UI / HTTP API
                  └── ExecutorRegistry
                         └── HarnessAgentExecutor (MVP)
 ```
+
+### Browser surfaces
+
+The same automation page is available through two additive DSH extension points: `settings.section` keeps the configuration page inside Settings, while `sidebar.footer.action` opens a frame-wide `shell.overlay`. A small client-only disclosure store coordinates the sidebar trigger and overlay; neither surface owns scheduler state, and both read the same package HTTP API.
 
 ### AutomationService
 
