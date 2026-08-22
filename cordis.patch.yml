@@ -1,0 +1,5 @@
+# @syncended/dsh-automations bundle patch.
+# The service resolves its private state under $DSH_HOME/automations by default.
+- insert:
+    - id: automations
+      name: "@syncended/dsh-automations"
