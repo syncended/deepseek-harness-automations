@@ -43,3 +43,8 @@ test('does not dim an entire disabled job card including live actions', async ()
   assert.doesNotMatch(source, /\.dsh-auto-card-disabled\{[^}]*opacity:/)
   assert.match(source, /body\[data-ds-dark-theme\] \.dsh-auto-root\{color-scheme:dark/)
 })
+
+test('keeps plugin actions clear of the Settings shell actions', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.dsh-auto-root\{[^}]*padding-top:12px/)
+})
