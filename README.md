@@ -22,9 +22,17 @@ A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence s
 
 The in-box `@deepseek-ai/dsh-schedule` plugin remains the right tool for reminders attached to one live Session. This plugin owns deployment-level jobs that can start a fresh project Session while no chat is open.
 
-## Install from this checkout
+## Install
 
-Requirements: Node.js 22+, pnpm, and a working `dsh web` profile.
+Requirements: Node.js 22+ and a working `dsh web` profile.
+
+From npm:
+
+```bash
+dsh plugin --profile web add @syncended/dsh-automations
+```
+
+Or from this checkout:
 
 ```bash
 pnpm install
