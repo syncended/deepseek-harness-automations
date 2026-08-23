@@ -265,6 +265,18 @@ test('uses editable DSH-style selectors for provider and model-owned effort', as
     { id: 'deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' }] },
     { id: 'openai-codex', name: 'OpenAI Codex', models: [{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }] },
   ]
+  assert.equal(plugin.__testing.normalizedProviders([{ id: 'openai-codex', models: ['gpt'] }])[0].name, 'OpenAI Codex')
+  assert.deepEqual(
+    Array.from(plugin.__testing.reasoningEffortsForState({ status: 'error', data: null })).map((effort) => effort.id),
+    ['off', 'minimal', 'low', 'medium', 'high', 'max'],
+  )
+  assert.deepEqual(
+    Array.from(plugin.__testing.reasoningEffortsForState({
+      status: 'ready',
+      data: { reasoning: { efforts: [{ id: 'turbo', name: 'Turbo' }] } },
+    })).map((effort) => effort.id),
+    ['turbo'],
+  )
   const providerNode = plugin.ProviderPicker({
     id: 'provider-field',
     value: 'open',
