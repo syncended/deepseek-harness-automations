@@ -187,6 +187,16 @@ test('presents permission presets with distinct DSH icons and plain-language det
   assert.match(source, /h\(PermissionPresetIcon, \{ value: job\.execution\.permissionPreset \}\)/)
 })
 
+test('allocates unique form prefixes when separate React roots reuse useId values', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const first = plugin.__testing.nextFormInstancePrefix('same-react-id')
+  const second = plugin.__testing.nextFormInstancePrefix('same-react-id')
+  assert.notEqual(first, second)
+  assert.match(first, /^dsh-auto-form-\d+-same-react-id$/)
+  assert.match(second, /^dsh-auto-form-\d+-same-react-id$/)
+  assert.match(source, /formPrefixRef\.current = nextFormInstancePrefix\(reactFormId\)/)
+})
+
 test('opens Automations as a disposable center workspace while retaining Settings', async () => {
   const { plugin } = await loadClientPlugin()
   const harness = createClientContext()
@@ -280,7 +290,8 @@ test('center workspace behaves as a non-modal page with an explicit exit', async
   assert.match(source, /name: "conversation"/)
   assert.match(source, /priority: -200/)
   assert.match(source, /event\.key !== "Escape"/)
-  assert.match(source, /const formPrefix = "dsh-auto-form-" \+ String\(useId\(\)\)/)
+  assert.match(source, /const reactFormId = String\(useId\(\)\)/)
+  assert.match(source, /formInstanceSerial \+= 1/)
   assert.doesNotMatch(source, /"dsh-auto-f-(?:name|permission|prompt)"/)
   assert.match(source, /\.dsh-auto-workspace\{[^}]*height:100%/)
   assert.doesNotMatch(source, /shell\.overlay|dsh-auto-overlay|"aria-haspopup": "dialog"|"aria-modal": "true"/)
