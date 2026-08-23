@@ -70,6 +70,58 @@ async function loadClientPlugin() {
   return { plugin, source }
 }
 
+function createClientContext() {
+  const registrations = []
+  const injections = []
+  const injectionControls = []
+  const effectDisposers = []
+  const ctx = {
+    effect(run, label = '') {
+      if (!/center workspace|workspace state/.test(label)) return undefined
+      const dispose = run()
+      if (typeof dispose === 'function') effectDisposers.push(dispose)
+      return dispose
+    },
+    slots: {
+      inject(name, install) {
+        injections.push(name)
+        const control = {
+          name,
+          activeDisposer: undefined,
+          declare() {
+            if (this.activeDisposer !== undefined) return
+            const dispose = install()
+            this.activeDisposer = typeof dispose === 'function' ? dispose : null
+          },
+          collapse() {
+            if (typeof this.activeDisposer === 'function') this.activeDisposer()
+            this.activeDisposer = undefined
+          },
+        }
+        injectionControls.push(control)
+        control.declare()
+        return () => control.collapse()
+      },
+      register(options, component) {
+        const registration = { options, component, disposed: false }
+        registrations.push(registration)
+        return () => {
+          registration.disposed = true
+        }
+      },
+    },
+  }
+  return {
+    ctx,
+    registrations,
+    injections,
+    injectionControls,
+    disposeEffects() {
+      for (const dispose of effectDisposers.reverse()) dispose()
+    },
+  }
+}
+
 test('renders CJK preset metadata with stable English identifiers', async () => {
   const { plugin, source } = await loadClientPlugin()
   assert.equal(plugin.agentPresetDisplayLabel({ id: 'standard', name: '标准模式' }), 'Standard mode (standard)')
@@ -135,184 +187,82 @@ test('presents permission presets with distinct DSH icons and plain-language det
   assert.match(source, /h\(PermissionPresetIcon, \{ value: job\.execution\.permissionPreset \}\)/)
 })
 
-test('registers additive main-sidebar and overlay seats while retaining Settings', async () => {
+test('opens Automations as a disposable center workspace while retaining Settings', async () => {
   const { plugin } = await loadClientPlugin()
-  const registrations = []
-  const ctx = {
-    effect() {},
-    slots: {
-      inject(_name, register) {
-        register()
-      },
-      register(options, component) {
-        registrations.push({ options, component })
-        return () => {}
-      },
-    },
-  }
+  const harness = createClientContext()
 
   assert.deepEqual(Array.from(plugin.inject), ['slots'])
-  plugin.apply(ctx)
+  plugin.apply(harness.ctx)
 
   assert.deepEqual(
-    registrations.map(({ options }) => options.name),
-    ['settings.section', 'sidebar.footer.action', 'shell.overlay'],
+    harness.registrations.map(({ options }) => options.name),
+    ['settings.section', 'sidebar.footer.action'],
   )
-  assert.deepEqual(
-    registrations.map(({ options }) => options.id),
-    ['automations', 'automations', 'automations'],
-  )
-  assert.equal(registrations[0].component.name, 'AutomationsSection')
-  assert.equal(registrations[1].component.name, 'AutomationsSidebarAction')
-  assert.equal(registrations[2].component.name, 'AutomationsOverlay')
+  assert.deepEqual(harness.injections, ['conversation', 'settings.section', 'sidebar.footer.action'])
+  assert.equal(harness.registrations[0].component.name, 'AutomationsSection')
+  assert.equal(harness.registrations[1].component.name, 'AutomationsSidebarAction')
+  const settingsTree = harness.registrations[0].component({ workspace: { id: 'host-owner-prop' } })
+  assert.equal(settingsTree.props.className, 'dsh-auto-root')
+  assert.equal(settingsTree.children[0].children[0].children[0].props.className, undefined)
 
-  const sidebarDisclosure = registrations[1].options.inject().disclosure
-  const overlayDisclosure = registrations[2].options.inject().disclosure
-  assert.equal(sidebarDisclosure, overlayDisclosure)
-  assert.equal(sidebarDisclosure.getSnapshot(), false)
-  sidebarDisclosure.open()
-  assert.equal(overlayDisclosure.getSnapshot(), true)
-  overlayDisclosure.close()
-  assert.equal(sidebarDisclosure.getSnapshot(), false)
-})
-
-test('overlay traps keyboard focus and closes on Escape', async () => {
-  const { plugin } = await loadClientPlugin()
-  const registrations = []
-  const ctx = {
-    effect() {},
-    slots: {
-      inject(_name, register) {
-        register()
-      },
-      register(options, component) {
-        registrations.push({ options, component })
-        return () => {}
-      },
-    },
-  }
-  plugin.apply(ctx)
-
-  const overlayRegistration = registrations.find(({ options }) => options.name === 'shell.overlay')
-  const disclosure = overlayRegistration.options.inject().disclosure
-  disclosure.open()
-  const tree = overlayRegistration.component({ disclosure })
-  const panelNode = tree.children[1]
-
-  const ownerDocument = { activeElement: null }
-  const focusable = (name) => ({
-    name,
-    focus() {
-      ownerDocument.activeElement = this
-    },
-    getClientRects() {
-      return [{}]
-    },
-    getAttribute() {
-      return null
-    },
-    hasAttribute() {
-      return false
-    },
-  })
-  const first = focusable('first')
-  const last = focusable('last')
-  let pickerOpen = false
-  const panel = {
-    ownerDocument,
-    querySelector() {
-      return pickerOpen ? {} : null
-    },
-    querySelectorAll() {
-      return [first, last]
-    },
-    contains(element) {
-      return element === first || element === last
-    },
-    focus() {
-      ownerDocument.activeElement = this
-    },
-  }
-  panelNode.props.ref.current = panel
-
-  let prevented = false
-  ownerDocument.activeElement = last
-  panelNode.props.onKeyDownCapture({
-    key: 'Tab',
-    defaultPrevented: false,
-    altKey: false,
-    ctrlKey: false,
-    metaKey: false,
-    shiftKey: false,
-    preventDefault() {
-      prevented = true
-    },
-  })
-  assert.equal(prevented, true)
-  assert.equal(ownerDocument.activeElement, first)
-
-  prevented = false
-  ownerDocument.activeElement = first
-  panelNode.props.onKeyDownCapture({
-    key: 'Tab',
-    defaultPrevented: false,
-    altKey: false,
-    ctrlKey: false,
-    metaKey: false,
-    shiftKey: true,
-    preventDefault() {
-      prevented = true
-    },
-  })
-  assert.equal(prevented, true)
-  assert.equal(ownerDocument.activeElement, last)
-
-  const portaledDialogControl = {}
-  prevented = false
-  panelNode.props.onKeyDownCapture({
-    key: 'Tab',
-    target: portaledDialogControl,
-    preventDefault() {
-      prevented = true
-    },
-  })
-  assert.equal(prevented, false)
-  assert.equal(disclosure.getSnapshot(), true)
-  panelNode.props.onKeyDownCapture({
-    key: 'Escape',
-    target: portaledDialogControl,
-    preventDefault() {
-      prevented = true
-    },
-  })
-  assert.equal(prevented, false)
-  assert.equal(disclosure.getSnapshot(), true)
-
-  pickerOpen = true
-  panelNode.props.onKeyDownCapture({
-    key: 'Escape',
-    preventDefault() {},
-  })
-  assert.equal(disclosure.getSnapshot(), true)
-
-  pickerOpen = false
-  panelNode.props.onKeyDownCapture({
-    key: 'Escape',
-    preventDefault() {},
-  })
+  const disclosure = harness.registrations[1].options.inject().disclosure
   assert.equal(disclosure.getSnapshot(), false)
+  disclosure.open()
+
+  const center = harness.registrations.at(-1)
+  assert.equal(center.options.name, 'conversation')
+  assert.equal(center.options.priority, -200)
+  assert.equal(center.component.name, 'AutomationsWorkspace')
+  assert.equal(center.options.inject().disclosure, disclosure)
+  assert.equal(center.disposed, false)
+
+  const conversationDeclaration = harness.injectionControls.find(({ name }) => name === 'conversation')
+  conversationDeclaration.collapse()
+  assert.equal(center.disposed, true)
+  assert.equal(disclosure.getSnapshot(), true)
+  conversationDeclaration.declare()
+  const remountedCenter = harness.registrations.at(-1)
+  assert.notEqual(remountedCenter, center)
+  assert.equal(remountedCenter.options.name, 'conversation')
+
+  const workspace = remountedCenter.component({ disclosure })
+  assert.equal(workspace.type, 'section')
+  assert.equal(workspace.props['data-dsh-automations-workspace'], 'true')
+  assert.equal(workspace.props.role, undefined)
+  assert.equal(workspace.props['aria-modal'], undefined)
+  const toolbar = workspace.children[0]
+  const exit = toolbar.children[2]
+  assert.equal(exit.type, primitivesStub.Button)
+  assert.equal(exit.props.variant, 'toolbar')
+  assert.equal(exit.props['data-dsh-automations-exit'], 'true')
+  const section = workspace.children[1].children[0]
+  assert.equal(section.type.name, 'AutomationsSection')
+  assert.equal(section.props.centerMode, true)
+
+  exit.props.onClick()
+  assert.equal(disclosure.getSnapshot(), false)
+  assert.equal(remountedCenter.disposed, true)
+
+  disclosure.open()
+  const reopenedCenter = harness.registrations.at(-1)
+  assert.notEqual(reopenedCenter, remountedCenter)
+  assert.equal(reopenedCenter.options.name, 'conversation')
+  harness.disposeEffects()
+  assert.equal(reopenedCenter.disposed, true)
 })
 
-test('declares load-order dependencies for both public shell extension points', async () => {
+test('declares load-order dependencies for Settings, sidebar, and center workspace', async () => {
   const pkg = JSON.parse(await readFile(packagePath, 'utf8'))
   assert.deepEqual(pkg.dsh.client.inject, [
     '@deepseek-ai/dsh-client-runtime',
     '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-sidebar',
     '@deepseek-ai/dsh-client-ui-settings',
   ])
   for (const dependency of [
     '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-sidebar',
   ]) {
     assert.equal(pkg.peerDependencies[dependency], '^0.1.1-rc.2')
@@ -321,13 +271,18 @@ test('declares load-order dependencies for both public shell extension points', 
   assert.equal(pkg.devDependencies['@deepseek-ai/dsh-client-ui-primitives'], '0.1.1-rc.2')
 })
 
-test('sidebar surface is accessible and does not replace occupied shell slots', async () => {
+test('center workspace behaves as a non-modal page with an explicit exit', async () => {
   const { source } = await loadClientPlugin()
   assert.match(source, /data-dsh-automations-trigger/)
-  assert.match(source, /data-dsh-automations-overlay/)
-  assert.match(source, /"aria-haspopup": "dialog"/)
-  assert.match(source, /"aria-modal": "true"/)
-  assert.match(source, /event\.key === "Escape"/)
-  assert.match(source, /\.dsh-auto-overlay\{[^}]*pointer-events:auto/)
+  assert.match(source, /data-dsh-automations-workspace/)
+  assert.match(source, /data-dsh-automations-exit/)
+  assert.match(source, /"aria-pressed": open/)
+  assert.match(source, /name: "conversation"/)
+  assert.match(source, /priority: -200/)
+  assert.match(source, /event\.key !== "Escape"/)
+  assert.match(source, /const formPrefix = "dsh-auto-form-" \+ String\(useId\(\)\)/)
+  assert.doesNotMatch(source, /"dsh-auto-f-(?:name|permission|prompt)"/)
+  assert.match(source, /\.dsh-auto-workspace\{[^}]*height:100%/)
+  assert.doesNotMatch(source, /shell\.overlay|dsh-auto-overlay|"aria-haspopup": "dialog"|"aria-modal": "true"/)
   assert.doesNotMatch(source, /ctx\.slots\.inject\("(?:root|sidebar|sidebar\.settings|sidebar\.workspaces)"/)
 })

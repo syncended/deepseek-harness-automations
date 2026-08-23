@@ -42,6 +42,15 @@ test('uses existing semantic DSH tokens instead of dark-only fallbacks', async (
   }
 })
 
+test('renders the Automations center as an in-flow DSH workspace', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.dsh-auto-workspace\{[^}]*width:100%;height:100%/)
+  assert.match(source, /\.dsh-auto-workspace-toolbar\{[^}]*--dsw-alias-border-l2/)
+  assert.match(source, /background:var\(--dsw-alias-bg-base/)
+  assert.match(source, /variant: "toolbar"/)
+  assert.doesNotMatch(source, /dsh-auto-overlay|backdrop-filter|position:fixed;inset:0/)
+})
+
 test('does not dim an entire disabled job card including live actions', async () => {
   const source = await readFile(clientPath, 'utf8')
   assert.match(source, /\.dsh-auto-card-disabled\{background:/)

@@ -15,7 +15,7 @@ Non-goals for the first release:
 ## Components
 
 ```text
-Sidebar / Settings UI / HTTP API
+Sidebar / Center workspace / Settings UI / HTTP API
           │
           ▼
  AutomationService ─── ProjectPolicy
@@ -30,7 +30,7 @@ Sidebar / Settings UI / HTTP API
 
 ### Browser surfaces
 
-The same automation page is available through two additive DSH extension points: `settings.section` keeps the configuration page inside Settings, while `sidebar.footer.action` opens a frame-wide `shell.overlay`. A small client-only disclosure store coordinates the sidebar trigger and overlay; neither surface owns scheduler state, and both read the same package HTTP API.
+The same automation page is available through Settings and a dedicated center workspace. `settings.section` keeps configuration available inside Settings; `sidebar.footer.action` activates a temporary, higher-priority `conversation` entry that replaces the current center occupant. This provides a split-screen-like full-center experience while using the single-slot election directly rather than Split Screen's internal view contributions. Closing Automations disposes its entry immediately, revealing whichever center surface was previously active. A small client-only disclosure store coordinates the sidebar trigger and dynamic registration; neither surface owns scheduler state, and both read the same package HTTP API.
 
 Interactive chrome uses the ambient `@deepseek-ai/dsh-client-ui-primitives` `Button`, `Menu`, and icon components. Package CSS is limited to the automation-specific layout and composes only public DSH semantic tokens, so theme, menu, focus, and button behavior stay aligned with the host UI.
 

@@ -8,7 +8,7 @@ A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence s
 
 - Standard five-field cron expressions with `UTC` or IANA timezones.
 - Per-job project directory, provider/model, reasoning effort, agent preset, permission preset, and timeout.
-- Enable/disable, Run now, edit, delete, cancel, and recent run history from the main **Automations** sidebar action or **Settings → Automations**.
+- Enable/disable, Run now, edit, delete, cancel, and recent run history from a full center workspace opened by the main **Automations** sidebar action, or from **Settings → Automations**.
 - Overlap policies:
   - `skip` — record and skip an occurrence while the job has queued/running work.
   - `queue` — serialize occurrences for the same job.
@@ -42,7 +42,7 @@ pnpm build
 dsh plugin --profile web add .
 ```
 
-The package declares a DSH bundle, so `dsh plugin` appends it to the Web profile automatically. Restart the running Web Harness after the initial install, then refresh the page. Open **Automations** from the main sidebar, or use **Settings → Automations**.
+The package declares a DSH bundle, so `dsh plugin` appends it to the Web profile automatically. Restart the running Web Harness after the initial install, then refresh the page. Open the full **Automations** workspace from the main sidebar, or use **Settings → Automations**.
 
 To remove it:
 
