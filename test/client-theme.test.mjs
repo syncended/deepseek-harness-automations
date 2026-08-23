@@ -54,7 +54,7 @@ test('renders the Automations center as an in-flow DSH workspace', async () => {
 test('groups the automation form into responsive DSH section cards', async () => {
   const source = await readFile(clientPath, 'utf8')
   assert.match(source, /\bPill,/)
-  assert.match(source, /\.dsh-auto-form\{[^}]*width:min\(100%,760px\)/)
+  assert.match(source, /\.dsh-auto-form\{[^}]*width:min\(100%,780px\)/)
   assert.match(source, /\.dsh-auto-form-section,.dsh-auto-advanced\{[^}]*--dsh-auto-border/)
   assert.match(source, /\.dsh-auto-form-section-icon\{[^}]*color-mix/)
   assert.match(source, /\.dsh-auto-advanced-trigger\{[^}]*width:100%/)
@@ -62,6 +62,21 @@ test('groups the automation form into responsive DSH section cards', async () =>
   assert.match(source, /\.dsh-auto-schedule-expression\{[^}]*text-overflow:ellipsis/)
   assert.match(source, /\.dsh-auto-advanced-content\[hidden\]\{display:none/)
   assert.match(source, /\.dsh-auto-form-footer\{[^}]*position:sticky/)
+})
+
+test('uses the base DSH typography and control scale', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.dsh-auto-input,.dsh-auto-select,.dsh-auto-textarea\{[^}]*min-height:36px[^}]*font-size:14px[^}]*line-height:22px/)
+  assert.match(source, /\.dsh-auto-picker-trigger\{[^}]*height:36px[^}]*font-size:14px[^}]*line-height:22px/)
+  assert.match(source, /\.dsh-auto-combobox-control\{[^}]*height:36px/)
+  assert.match(source, /\.dsh-auto-combobox-input\{[^}]*font-size:14px[^}]*line-height:22px/)
+  assert.match(source, /\.dsh-auto-form-section-title\{[^}]*font-size:16px[^}]*line-height:22px/)
+  assert.match(source, /\.dsh-auto-label\{[^}]*font-size:14px[^}]*line-height:22px/)
+  assert.match(source, /\.dsh-auto-hint\{[^}]*font-size:12px[^}]*line-height:18px/)
+  assert.match(source, /\.dsh-auto-schedule-modes button\{[^}]*height:32px[^}]*font-size:14px/)
+  assert.match(source, /\.dsh-auto-schedule-summary-copy\{[^}]*font-size:14px[^}]*line-height:22px/)
+  assert.match(source, /@container dsh-auto-workspace \(max-width:460px\)\{[^}]*dsh-auto-form-header[^}]*flex-direction:column/)
+  assert.match(source, /@media \(max-width:480px\)[\s\S]*?\.dsh-auto-cron-guide\{[^}]*repeat\(2/)
 })
 
 test('styles editable combobox listboxes as anchored DSH menu surfaces', async () => {
