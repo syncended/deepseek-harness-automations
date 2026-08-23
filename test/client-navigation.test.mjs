@@ -46,6 +46,18 @@ async function loadClientPlugin() {
   return { plugin, source }
 }
 
+test('renders CJK preset metadata with stable English identifiers', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  assert.equal(plugin.agentPresetDisplayLabel({ id: 'standard', name: '标准模式' }), 'Standard mode (standard)')
+  assert.equal(plugin.agentPresetDisplayLabel({ id: 'code', name: 'PTC 模式' }), 'PTC mode (code)')
+  assert.equal(plugin.agentPresetDisplayLabel({ id: 'minimal', name: '极简模式' }), 'Minimal mode (minimal)')
+  assert.equal(plugin.agentPresetDisplayLabel({ id: 'cordis', name: '创造模式' }), 'Creator mode (cordis)')
+  assert.equal(plugin.agentPresetDisplayLabel({ id: 'review', name: 'Review mode' }), 'Review mode (review)')
+  assert.equal(plugin.agentPresetDisplayLabel({ id: 'my-preset', name: 'my-preset' }), 'My Preset (my-preset)')
+  assert.equal(plugin.agentPresetDisplayLabel({ id: '', name: '标准模式' }), 'Unknown preset')
+  assert.ok((source.match(/agentPresetDisplayLabel\(/g) ?? []).length >= 3)
+})
+
 test('registers additive main-sidebar and overlay seats while retaining Settings', async () => {
   const { plugin } = await loadClientPlugin()
   const registrations = []
