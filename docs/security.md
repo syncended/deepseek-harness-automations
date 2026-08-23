@@ -16,7 +16,7 @@ The custom header forces a cross-origin browser request through CORS preflight, 
 
 ## Filesystem authority
 
-A job's project is canonicalized with `realpath` before storage. `workspace-write` uses that Session cwd as its DSH sandbox root. `allowedProjectRoots`, when configured, are canonicalized and checked with path-segment containment rather than string prefixes.
+A job's workspace path is canonicalized with `realpath` before storage. `workspace-write` uses that Session cwd as its DSH sandbox root. `allowedProjectRoots`, when configured, are canonicalized and checked with path-segment containment rather than string prefixes.
 
 The executor repeats authorization at dispatch, catching deleted paths and symlink retargeting after configuration.
 
@@ -32,7 +32,7 @@ Scheduled Agents are not attached to an interactive browser ownership chain. A p
 
 ## Secrets and persisted data
 
-`state.json` contains job prompts, project paths, model/preset selections, run metadata, and bounded final assistant text. It is atomically replaced with mode `0600`; parent directories created by the plugin use `0700`. Session transcripts are persisted by the configured Harness Session backend and may contain substantially more data.
+`state.json` contains job prompts, workspace paths, model/preset selections, run metadata, and bounded final assistant text. It is atomically replaced with mode `0600`; parent directories created by the plugin use `0700`. Session transcripts are persisted by the configured Harness Session backend and may contain substantially more data.
 
 Do not put API keys directly in prompts. Use normal Harness credential providers and environment policy.
 

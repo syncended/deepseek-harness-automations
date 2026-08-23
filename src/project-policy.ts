@@ -36,17 +36,17 @@ export class ProjectPolicy {
     const roots: string[] = []
     for (const configured of configuredRoots) {
       const path = resolve(expandHomePath(configured))
-      roots.push(await canonicalDirectory(path, 'allowed project root'))
+      roots.push(await canonicalDirectory(path, 'allowed workspace root'))
     }
     return new ProjectPolicy([...new Set(roots)])
   }
 
   async authorize(cwd: string): Promise<string> {
-    if (!isAbsolute(cwd)) throw new AutomationInputError('project cwd must be absolute')
-    const canonical = await canonicalDirectory(cwd, 'project cwd')
+    if (!isAbsolute(cwd)) throw new AutomationInputError('workspace path must be absolute')
+    const canonical = await canonicalDirectory(cwd, 'workspace path')
     if (this.roots.length > 0 && !this.roots.some((root) => isWithin(root, canonical))) {
       throw new AutomationInputError(
-        `project cwd is outside allowedProjectRoots: ${canonical}`,
+        `workspace path is outside allowedProjectRoots: ${canonical}`,
         'PROJECT_NOT_ALLOWED',
         403,
       )

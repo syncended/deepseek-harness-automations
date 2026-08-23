@@ -24,7 +24,7 @@ export interface CronSchedule {
 }
 
 export interface AgentExecutionSpec {
-  /** Absolute project directory and immutable session workspace root. */
+  /** Absolute workspace directory and immutable Session cwd/root. */
   cwd: string
   /** Omitted provider and model resolve from the current Harness default at dispatch time. */
   provider?: string

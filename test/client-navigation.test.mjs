@@ -83,7 +83,20 @@ function createClientContext() {
   const injections = []
   const injectionControls = []
   const effectDisposers = []
+  const workspaceSnapshot = {
+    items: [{ workspaceId: 'workspace-test', title: 'Test workspace', path: '/work/test', sessionIds: [] }],
+    state: 'idle',
+    phase: 'ready',
+    error: null,
+  }
+  const workspaceRuntime = {
+    list: {
+      getSnapshot: () => workspaceSnapshot,
+      subscribe: () => () => {},
+    },
+  }
   const ctx = {
+    workspaces: workspaceRuntime,
     effect(run, label = '') {
       if (!/center workspace|workspace state/.test(label)) return undefined
       const dispose = run()
@@ -124,6 +137,7 @@ function createClientContext() {
     registrations,
     injections,
     injectionControls,
+    workspaceRuntime,
     disposeEffects() {
       for (const dispose of effectDisposers.reverse()) dispose()
     },
@@ -259,6 +273,64 @@ test('offers an accessible searchable IANA time zone combobox', async () => {
   assert.doesNotMatch(source, /fieldId\("timezone-list"\)/)
 })
 
+test('uses an editable selector backed by Harness workspaces', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const workspaces = [
+    { workspaceId: 'workspace-a', title: 'Harness Automations', path: '/work/automations', sessionIds: ['one', 'two'] },
+    { workspaceId: 'workspace-b', title: '', path: '/work/reports', sessionIds: [] },
+    { workspaceId: 'duplicate', title: 'Duplicate', path: '/work/automations', sessionIds: [] },
+  ]
+  assert.deepEqual(
+    Array.from(plugin.__testing.normalizedWorkspaces(workspaces), ({ id, title, path, sessionCount }) => ({ id, title, path, sessionCount })),
+    [
+      { id: 'workspace-a', title: 'Harness Automations', path: '/work/automations', sessionCount: 2 },
+      { id: 'workspace-b', title: 'reports', path: '/work/reports', sessionCount: 0 },
+    ],
+  )
+  assert.equal(plugin.__testing.looksLikeAbsolutePath('/work/automations'), true)
+  assert.equal(plugin.__testing.looksLikeAbsolutePath('C:\\work\\automations'), true)
+  assert.equal(plugin.__testing.looksLikeAbsolutePath('C:/work/automations'), true)
+  assert.equal(plugin.__testing.looksLikeAbsolutePath('\\\\server\\share\\automations'), true)
+  assert.equal(plugin.__testing.looksLikeAbsolutePath('relative/path'), false)
+  assert.equal(plugin.__testing.preferredWorkspacePath({ items: workspaces, recentWorkspaceId: 'workspace-b' }), '/work/reports')
+  assert.equal(plugin.__testing.preferredWorkspacePath({ items: workspaces }), '/work/automations')
+  assert.equal(plugin.__testing.preferredWorkspacePath({ items: [] }), '')
+
+  const registeredNode = plugin.WorkspacePicker({
+    id: 'workspace-field',
+    value: '/work/automations',
+    workspaceSnapshot: { items: workspaces, state: 'idle', phase: 'ready', error: null },
+    onChange() {},
+  })
+  assert.equal(registeredNode.props.selectedId, 'workspace:workspace-a')
+  assert.equal(registeredNode.props.displayValue, 'Harness Automations')
+  assert.equal(registeredNode.type(registeredNode.props).children[0].children[1].props.value, 'Harness Automations')
+  assert.equal(registeredNode.props.optionsForQuery('harness')[0].value, '/work/automations')
+  assert.match(registeredNode.props.optionsForQuery('harness')[0].detail, /2 sessions/)
+  assert.equal(registeredNode.props.panelNotice, null)
+
+  const customNode = plugin.WorkspacePicker({
+    id: 'workspace-field',
+    value: '/srv/custom-project',
+    workspaceSnapshot: { items: workspaces, state: 'idle', phase: 'ready', error: null },
+    onChange() {},
+  })
+  assert.equal(customNode.props.selectedId, 'custom-workspace:/srv/custom-project')
+  assert.equal(customNode.props.optionsForQuery('/srv/custom-project')[0].custom, true)
+  assert.equal(customNode.props.commitExactValue(' /srv/custom-project '), '/srv/custom-project')
+  assert.equal(customNode.props.commitExactValue('relative/path'), null)
+  const customTree = customNode.type(customNode.props)
+  assert.equal(customTree.children[0].children[1].props.role, 'combobox')
+  assert.equal(customTree.children[0].children[1].props.list, undefined)
+
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces'])
+  assert.match(source, /label: "Workspace"/)
+  assert.match(source, /workspaceRuntime: ctx\.workspaces/)
+  assert.match(source, /workspaceTouchedRef\.current/)
+  assert.match(source, /preferredWorkspacePath\(workspaceSnapshot\)/)
+  assert.doesNotMatch(source, /label: "Working directory"/)
+})
+
 test('uses editable DSH-style selectors for provider and model-owned effort', async () => {
   const { plugin, source } = await loadClientPlugin()
   const providers = [
@@ -324,7 +396,7 @@ test('opens Automations as a disposable center workspace while retaining Setting
   const { plugin } = await loadClientPlugin()
   const harness = createClientContext()
 
-  assert.deepEqual(Array.from(plugin.inject), ['slots'])
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces'])
   plugin.apply(harness.ctx)
 
   assert.deepEqual(
@@ -334,7 +406,9 @@ test('opens Automations as a disposable center workspace while retaining Setting
   assert.deepEqual(harness.injections, ['conversation', 'settings.section', 'sidebar.footer.action'])
   assert.equal(harness.registrations[0].component.name, 'AutomationsSection')
   assert.equal(harness.registrations[1].component.name, 'AutomationsSidebarAction')
-  const settingsTree = harness.registrations[0].component({ workspace: { id: 'host-owner-prop' } })
+  const settingsInjection = harness.registrations[0].options.inject()
+  assert.equal(settingsInjection.workspaceRuntime, harness.workspaceRuntime)
+  const settingsTree = harness.registrations[0].component(settingsInjection)
   assert.equal(settingsTree.props.className, 'dsh-auto-root')
   assert.equal(settingsTree.children[0].children[0].children[0].props.className, undefined)
 
@@ -347,6 +421,7 @@ test('opens Automations as a disposable center workspace while retaining Setting
   assert.equal(center.options.priority, -200)
   assert.equal(center.component.name, 'AutomationsWorkspace')
   assert.equal(center.options.inject().disclosure, disclosure)
+  assert.equal(center.options.inject().workspaceRuntime, harness.workspaceRuntime)
   assert.equal(center.disposed, false)
 
   const conversationDeclaration = harness.injectionControls.find(({ name }) => name === 'conversation')
@@ -358,7 +433,7 @@ test('opens Automations as a disposable center workspace while retaining Setting
   assert.notEqual(remountedCenter, center)
   assert.equal(remountedCenter.options.name, 'conversation')
 
-  const workspace = remountedCenter.component({ disclosure })
+  const workspace = remountedCenter.component(remountedCenter.options.inject())
   assert.equal(workspace.type, 'section')
   assert.equal(workspace.props['data-dsh-automations-workspace'], 'true')
   assert.equal(workspace.props.role, undefined)

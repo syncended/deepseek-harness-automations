@@ -62,10 +62,10 @@ function failureFromReason(reason: TurnEndReason | undefined): AgentRunError {
 
 async function assertCanonicalDirectory(cwd: string): Promise<void> {
   const [metadata, canonical] = await Promise.all([stat(cwd), realpath(cwd)])
-  if (!metadata.isDirectory()) throw new AgentRunError(`Project path is not a directory: ${cwd}`, 'PROJECT_NOT_DIRECTORY')
+  if (!metadata.isDirectory()) throw new AgentRunError(`Workspace path is not a directory: ${cwd}`, 'PROJECT_NOT_DIRECTORY')
   if (canonical !== cwd) {
     throw new AgentRunError(
-      `Project path no longer resolves to its saved filesystem identity: expected ${cwd}, found ${canonical}`,
+      `Workspace path no longer resolves to its saved filesystem identity: expected ${cwd}, found ${canonical}`,
       'PROJECT_IDENTITY_CHANGED',
     )
   }

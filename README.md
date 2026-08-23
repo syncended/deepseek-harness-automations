@@ -1,13 +1,13 @@
 # DeepSeek Harness Automations
 
-A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence starts a fresh persisted Harness Agent in a selected project with an explicit model route, agent preset, and permission preset.
+A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence starts a fresh persisted Harness Agent in a selected workspace with an explicit model route, agent preset, and permission preset.
 
 > **Status:** MVP for `@deepseek-ai/dsh` `0.1.1-rc.2`. The current worker is single-host. Cron admission and run history are durable; an already-started run is deliberately **not** retried after a host crash.
 
 ## What works
 
 - Standard five-field cron expressions with `UTC` or IANA timezones.
-- Per-job project directory, provider/model, reasoning effort, agent preset, permission preset, and timeout.
+- Per-job workspace, provider/model, reasoning effort, agent preset, permission preset, and timeout.
 - Enable/disable, Run now, edit, delete, cancel, and recent run history from a full center workspace opened by the main **Automations** sidebar action, or from **Settings → Automations**.
 - Overlap policies:
   - `skip` — record and skip an occurrence while the job has queued/running work.
@@ -20,7 +20,7 @@ A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence s
 - Immutable execution snapshots and occurrence keys for replay-safe admission.
 - Extensible executor registry: the MVP ships `agent`; future `workflow` and task-graph executors do not need scheduler changes.
 
-The in-box `@deepseek-ai/dsh-schedule` plugin remains the right tool for reminders attached to one live Session. This plugin owns deployment-level jobs that can start a fresh project Session while no chat is open.
+The in-box `@deepseek-ai/dsh-schedule` plugin remains the right tool for reminders attached to one live Session. This plugin owns deployment-level jobs that can start a fresh workspace Session while no chat is open.
 
 ## Install
 
@@ -57,7 +57,7 @@ dsh plugin --profile web remove @syncended/dsh-automations
 | Name | Human-readable job name. |
 | Cron | Five fields: `minute hour day-of-month month day-of-week`. Example: `0 9 * * 1-5`. |
 | Time zone | Search by city or region in the picker, or enter `UTC` / an IANA name such as `Europe/Berlin`. Current UTC offsets are shown; DST is handled by `cron-parser`. |
-| Project | Existing absolute directory. Its canonical filesystem identity becomes the Session cwd and `workspace-write` root. |
+| Workspace | Choose an existing Harness workspace or enter an absolute directory manually. Its canonical filesystem identity becomes the Session cwd and `workspace-write` root. |
 | Prompt | The user message sent to a fresh Harness Agent. |
 | Provider / model | Choose a configured provider in the searchable picker or enter an unlisted adapter route, then choose or enter its model. Leave both blank to resolve the current Harness default at dispatch time. |
 | Reasoning effort | Choose `Default` or an exact-model effort advertised by the adapter. If capability lookup is unavailable, common IDs are shown as advisory fallbacks; custom IDs remain editable and are validated when the run starts. |
@@ -101,7 +101,7 @@ This is not exactly-once execution. Exactly-once external side effects require i
 ## Security
 
 - State files are replaced atomically with mode `0600`; created directories use `0700`.
-- Project paths are resolved through `realpath`; optional allowed roots are checked against that canonical identity.
+- Workspace paths are resolved through `realpath`; optional allowed roots are checked against that canonical identity.
 - Background work uses a normal DSH permission preset. `workspace-write` cannot silently widen itself; unattended approval failures remain fail-closed.
 - `danger-full-access` is intentionally available only when the job author selects a configured preset that grants it.
 - The management API requires JSON plus a custom same-origin mutation header. It inherits the trust boundary of the DSH Web server, which has no standalone authentication layer.

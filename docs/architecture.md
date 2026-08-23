@@ -32,11 +32,11 @@ Sidebar / Center workspace / Settings UI / HTTP API
 
 The same automation page is available through Settings and a dedicated center workspace. `settings.section` keeps configuration available inside Settings; `sidebar.footer.action` activates a temporary, higher-priority `conversation` entry that replaces the current center occupant. This provides a split-screen-like full-center experience while using the single-slot election directly rather than Split Screen's internal view contributions. Closing Automations disposes its entry immediately, revealing whichever center surface was previously active. A small client-only disclosure store coordinates the sidebar trigger and dynamic registration; neither surface owns scheduler state, and both read the same package HTTP API.
 
-Interactive chrome uses the ambient `@deepseek-ai/dsh-client-ui-primitives` `Button`, `Menu`, and icon components. Package CSS is limited to the automation-specific layout and composes only public DSH semantic tokens, so theme, menu, focus, and button behavior stay aligned with the host UI.
+Interactive chrome uses the ambient `@deepseek-ai/dsh-client-ui-primitives` `Button`, `Menu`, and icon components. The Workspace selector subscribes to `ctx.workspaces.list`, projecting the Host's live workspace order while retaining manual absolute-path entry. Package CSS is limited to the automation-specific layout and composes only public DSH semantic tokens, so theme, menu, focus, and button behavior stay aligned with the host UI.
 
 ### AutomationService
 
-Cordis service `ctx.automations`. It owns input validation, canonical project authorization, metadata discovery, the Web route, and the public executor-registration seam.
+Cordis service `ctx.automations`. It owns input validation, canonical workspace-path authorization, metadata discovery, the Web route, and the public executor-registration seam.
 
 ### AutomationStateStore
 
@@ -72,7 +72,7 @@ It never knows how an Agent, workflow, or code task works.
 
 The `agent` executor:
 
-1. re-authorizes the canonical project;
+1. re-authorizes the canonical workspace path;
 2. resolves the job's agent and permission presets;
 3. resolves the current default model or the pinned provider/model route;
 4. creates a fresh Session and Agent through `ctx.agents.create`;
@@ -123,7 +123,7 @@ A queued run must not change when a user edits or deletes its source job. The sn
 - job id/version and name;
 - schedule/policy values used at admission;
 - prompt and execution settings;
-- project/model/preset/permission/timeout values.
+- workspace/model/preset/permission/timeout values.
 
 Deleting a job marks its still-queued runs skipped; already-running work drains against its snapshot.
 
