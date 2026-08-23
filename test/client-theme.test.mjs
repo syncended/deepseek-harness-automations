@@ -51,6 +51,19 @@ test('renders the Automations center as an in-flow DSH workspace', async () => {
   assert.doesNotMatch(source, /dsh-auto-overlay|backdrop-filter|position:fixed;inset:0/)
 })
 
+test('groups the automation form into responsive DSH section cards', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\bPill,/)
+  assert.match(source, /\.dsh-auto-form\{[^}]*width:min\(100%,760px\)/)
+  assert.match(source, /\.dsh-auto-form-section,.dsh-auto-advanced\{[^}]*--dsh-auto-border/)
+  assert.match(source, /\.dsh-auto-form-section-icon\{[^}]*color-mix/)
+  assert.match(source, /\.dsh-auto-advanced-trigger\{[^}]*width:100%/)
+  assert.match(source, /\.dsh-auto-cron-guide\{[^}]*repeat\(5/)
+  assert.match(source, /\.dsh-auto-schedule-expression\{[^}]*text-overflow:ellipsis/)
+  assert.match(source, /\.dsh-auto-advanced-content\[hidden\]\{display:none/)
+  assert.match(source, /\.dsh-auto-form-footer\{[^}]*position:sticky/)
+})
+
 test('styles editable combobox listboxes as anchored DSH menu surfaces', async () => {
   const source = await readFile(clientPath, 'utf8')
   assert.match(source, /useComboboxPopoverLayout/)

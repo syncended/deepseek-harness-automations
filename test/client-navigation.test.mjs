@@ -43,6 +43,18 @@ const primitivesStub = new Proxy({}, {
   },
 })
 
+function treeNodes(value) {
+  const nodes = []
+  const visit = (entry) => {
+    if (Array.isArray(entry)) return entry.forEach(visit)
+    if (!entry || typeof entry !== 'object') return
+    nodes.push(entry)
+    visit(entry.children)
+  }
+  visit(value)
+  return nodes
+}
+
 async function loadClientPlugin() {
   const source = await readFile(clientPath, 'utf8')
   let plugin
@@ -271,6 +283,85 @@ test('offers an accessible searchable IANA time zone combobox', async () => {
   assert.match(source, /"aria-activedescendant"/)
   assert.match(source, /createPortal\(panel, document\.body\)/)
   assert.doesNotMatch(source, /fieldId\("timezone-list"\)/)
+})
+
+test('offers readable schedule presets with an explained custom cron mode', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const schedule = plugin.__testing.simpleSchedule
+  assert.equal(schedule('*/15 * * * *').mode, 'minutes')
+  assert.equal(schedule('17 * * * *').mode, 'hourly')
+  assert.equal(schedule('59 * * * *').minute, 59)
+  assert.equal(schedule('0 6 * * *').mode, 'daily')
+  assert.equal(schedule('30 8 * * 1-5').mode, 'weekdays')
+  assert.equal(schedule('45 18 * * 5').mode, 'weekly')
+  assert.equal(schedule('0 9 1 * *').mode, 'custom')
+  assert.deepEqual(
+    { ...plugin.__testing.scheduleControlValues('30 14 * * 5') },
+    { minute: 30, hour: 14, weekday: '5', interval: 15 },
+  )
+  assert.deepEqual(
+    { ...plugin.__testing.scheduleControlValues('*/20 * * * *', { minute: 30, hour: 14, weekday: '5' }) },
+    { minute: 30, hour: 14, weekday: '5', interval: 20 },
+  )
+  assert.deepEqual(
+    { ...plugin.__testing.scheduleControlValues('30 8 * * MON-FRI') },
+    { minute: 30, hour: 8, weekday: '1', interval: 15 },
+  )
+  assert.equal(plugin.__testing.cronForSimpleSchedule('minutes', { interval: 20 }), '*/20 * * * *')
+  assert.equal(plugin.__testing.cronForSimpleSchedule('hourly', { minute: 10 }), '10 * * * *')
+  assert.equal(plugin.__testing.cronForSimpleSchedule('daily', { hour: 7, minute: 5 }), '5 7 * * *')
+  assert.equal(plugin.__testing.cronForSimpleSchedule('weekdays', { hour: 9, minute: 30 }), '30 9 * * 1-5')
+  assert.equal(plugin.__testing.cronForSimpleSchedule('weekly', { hour: 18, minute: 45, weekday: '5' }), '45 18 * * 5')
+  const customCron = '0 9 1 * *'
+  const customValues = plugin.__testing.scheduleControlValues(customCron)
+  const dailyTransition = plugin.__testing.scheduleModeTransition('daily', customCron, customValues, customCron)
+  assert.equal(dailyTransition.cron, '0 9 * * *')
+  assert.equal(dailyTransition.customCron, customCron)
+  assert.equal(
+    plugin.__testing.scheduleModeTransition('custom', dailyTransition.cron, customValues, dailyTransition.customCron).cron,
+    customCron,
+  )
+  const weeklyValues = plugin.__testing.scheduleControlValues('30 14 * * 5')
+  assert.equal(plugin.__testing.scheduleModeTransition('minutes', '30 14 * * 5', weeklyValues, null).cron, '*/15 * * * *')
+  assert.equal(plugin.__testing.scheduleModeTransition('weekly', '*/15 * * * *', weeklyValues, null).cron, '30 14 * * 5')
+  assert.equal(plugin.__testing.describeSimpleSchedule(schedule('30 8 * * 1-5'), 'Europe/Moscow'), 'Monday–Friday at 08:30 · Europe/Moscow')
+  assert.equal(plugin.__testing.describeSimpleSchedule({ mode: 'custom', cron: '0 9 * * *' }, 'UTC'), 'Custom five-field schedule · UTC')
+  assert.equal(plugin.__testing.describeSimpleSchedule({ mode: 'custom', cron: '0 9 * *' }, 'UTC'), 'Cron needs exactly five fields · UTC')
+  assert.equal(plugin.__testing.overlapPolicySummary('skip'), 'Skip overlaps')
+  assert.equal(plugin.__testing.overlapPolicySummary('queue'), 'Queue overlaps')
+  assert.equal(plugin.__testing.overlapPolicySummary('allow'), 'Allow concurrent runs')
+  assert.equal(plugin.__testing.inferFormErrorField('Timeout must be a whole number.'), 'timeout')
+  assert.equal(plugin.__testing.inferFormErrorField('invalid cron expression'), 'cron')
+  assert.equal(plugin.__testing.inferFormErrorField('unrelated server error'), null)
+
+  const changes = []
+  const tree = plugin.ScheduleEditor({
+    fieldId: (name) => 'schedule-' + name,
+    cron: '30 8 * * 1-5',
+    timezone: 'Europe/Moscow',
+    onCronChange: (value) => changes.push(value),
+    onTimezoneChange() {},
+  })
+  const nodes = treeNodes(tree)
+  const weekdayPill = nodes.find((node) => node.type === primitivesStub.Pill && node.children[0] === 'Weekdays')
+  const dailyPill = nodes.find((node) => node.type === primitivesStub.Pill && node.children[0] === 'Daily')
+  assert.equal(weekdayPill.props.active, true)
+  assert.equal(weekdayPill.props['aria-pressed'], true)
+  dailyPill.props.onClick()
+  assert.equal(changes.at(-1), '30 8 * * *')
+  const time = nodes.find((node) => node.type === 'input' && node.props.type === 'time')
+  assert.equal(time.props.value, '08:30')
+  time.props.onChange({ target: { value: '09:45' } })
+  assert.equal(changes.at(-1), '45 9 * * 1-5')
+  assert.match(source, /title: "Task"/)
+  assert.match(source, /title: "Schedule"/)
+  assert.match(source, /title: "Agent & access"/)
+  assert.match(source, /className: "dsh-auto-advanced-trigger"/)
+  assert.match(source, /hidden: !advancedOpen/)
+  assert.match(source, /key: editing === null \? "create" : "edit:" \+ editing\.id/)
+  assert.match(source, /aria-label": "Schedule frequency"/)
+  assert.match(source, /Cron needs exactly five fields/)
+  assert.doesNotMatch(source, /label: "Cron"/)
 })
 
 test('uses an editable selector backed by Harness workspaces', async () => {

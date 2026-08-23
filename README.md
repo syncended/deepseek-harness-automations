@@ -55,7 +55,7 @@ dsh plugin --profile web remove @syncended/dsh-automations
 | Field | Meaning |
 |---|---|
 | Name | Human-readable job name. |
-| Cron | Five fields: `minute hour day-of-month month day-of-week`. Example: `0 9 * * 1-5`. |
+| Schedule | Choose Minutes, Hourly, Daily, Weekdays, or Weekly and adjust its simple controls. Custom exposes the raw five-field cron (`minute hour day-of-month month day-of-week`) with an inline field guide. |
 | Time zone | Search by city or region in the picker, or enter `UTC` / an IANA name such as `Europe/Berlin`. Current UTC offsets are shown; DST is handled by `cron-parser`. |
 | Workspace | Choose an existing Harness workspace or enter an absolute directory manually. Its canonical filesystem identity becomes the Session cwd and `workspace-write` root. |
 | Prompt | The user message sent to a fresh Harness Agent. |
@@ -66,7 +66,7 @@ dsh plugin --profile web remove @syncended/dsh-automations
 | Timeout | Wall-clock run limit. Cancellation is cooperative through the Agent loop. |
 | Overlap / misfire | Admission behavior described above. |
 
-A disabled job may still be started with **Run now**.
+The form groups common settings into **Task**, **Schedule**, and **Agent & access**. Job ID, timeout, overlap, and misfire stay available in the collapsed **Advanced** section. A paused job may still be started with **Run now**.
 
 ## Plugin configuration
 
