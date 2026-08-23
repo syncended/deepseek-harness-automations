@@ -7,6 +7,7 @@ const clientPath = new URL('../lib/client.js', import.meta.url)
 const packagePath = new URL('../package.json', import.meta.url)
 
 const reactStub = {
+  Fragment: Symbol('Fragment'),
   createElement(type, props, ...children) {
     return { type, props: props ?? {}, children }
   },
@@ -29,6 +30,13 @@ const reactStub = {
   },
 }
 
+const primitivesStub = new Proxy({}, {
+  get(target, property) {
+    if (!(property in target)) target[property] = () => null
+    return target[property]
+  },
+})
+
 async function loadClientPlugin() {
   const source = await readFile(clientPath, 'utf8')
   let plugin
@@ -36,13 +44,29 @@ async function loadClientPlugin() {
     __ModuleLoader__: {
       load(definition) {
         plugin = definition.factory((id) => {
-          assert.equal(id, 'react')
-          return reactStub
+          if (id === 'react') return reactStub
+          if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitivesStub
+          assert.fail(`unexpected client dependency: ${id}`)
         })
       },
     },
   }
-  vm.runInNewContext(source, { window, Set, Array, Object, Intl, Error, String, Number, RegExp })
+  vm.runInNewContext(source, {
+    window,
+    Set,
+    Array,
+    Object,
+    Intl,
+    Error,
+    String,
+    Number,
+    RegExp,
+    requestAnimationFrame(callback) {
+      callback()
+      return 1
+    },
+    cancelAnimationFrame() {},
+  })
   return { plugin, source }
 }
 
@@ -56,6 +80,59 @@ test('renders CJK preset metadata with stable English identifiers', async () => 
   assert.equal(plugin.agentPresetDisplayLabel({ id: 'my-preset', name: 'my-preset' }), 'My Preset (my-preset)')
   assert.equal(plugin.agentPresetDisplayLabel({ id: '', name: '标准模式' }), 'Unknown preset')
   assert.ok((source.match(/agentPresetDisplayLabel\(/g) ?? []).length >= 3)
+})
+
+test('presents permission presets with distinct DSH icons and plain-language detail', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const readOnly = plugin.permissionPresetPresentation('read-only')
+  const workspaceWrite = plugin.permissionPresetPresentation('workspace-write')
+  const fullAccess = plugin.permissionPresetPresentation('danger-full-access')
+
+  assert.deepEqual(
+    [readOnly.label, workspaceWrite.label, fullAccess.label],
+    ['Read Only', 'Workspace Write', 'Full access'],
+  )
+  assert.match(readOnly.detail, /without modifying/i)
+  assert.match(workspaceWrite.detail, /wider retries require approval/i)
+  assert.match(fullAccess.detail, /without approval prompts/i)
+  assert.notEqual(readOnly.icon, workspaceWrite.icon)
+  assert.notEqual(workspaceWrite.icon, fullAccess.icon)
+  const changes = []
+  const pickerTree = plugin.PermissionPresetPicker({
+    id: 'permission-picker',
+    value: 'workspace-write',
+    presets: ['read-only', 'workspace-write', 'danger-full-access'],
+    onChange: (value) => changes.push(value),
+  })
+  assert.equal(pickerTree.type, reactStub.Fragment)
+  const picker = pickerTree.children[0]
+  const risk = pickerTree.children[1]
+  assert.equal(picker.type, primitivesStub.Menu)
+  assert.equal(picker.props.side, 'top')
+  assert.equal(picker.props.portal, true)
+  assert.equal(picker.props.selectedId, 'workspace-write')
+  assert.deepEqual(Array.from(picker.props.items, ({ id }) => id), ['read-only', 'workspace-write', 'danger-full-access'])
+  assert.equal(picker.props.items[2].danger, true)
+  assert.equal(picker.props.anchor.props['data-permission-preset'], 'workspace-write')
+  assert.equal(risk.type, primitivesStub.RiskConfirmation)
+  assert.match(risk.props.description, /scheduled agents/i)
+
+  picker.props.onSelect('read-only')
+  assert.deepEqual(changes, ['read-only'])
+  picker.props.onSelect('danger-full-access')
+  assert.deepEqual(changes, ['read-only'], 'Full access must wait for risk confirmation')
+  risk.props.onConfirm()
+  assert.deepEqual(changes, ['read-only', 'danger-full-access'])
+
+  assert.match(source, /function PermissionPresetPicker/)
+  assert.match(source, /h\(RiskConfirmation/)
+  assert.match(source, /usePickerMenuNavigation/)
+  assert.match(source, /useRiskConfirmationFocus/)
+  assert.match(source, /event\.key === "ArrowDown"/)
+  assert.match(source, /focusAfterPickerTab/)
+  assert.match(source, /stopImmediatePropagation/)
+  assert.match(source, /data-permission-preset/)
+  assert.match(source, /h\(PermissionPresetIcon, \{ value: job\.execution\.permissionPreset \}\)/)
 })
 
 test('registers additive main-sidebar and overlay seats while retaining Settings', async () => {
@@ -140,8 +217,12 @@ test('overlay traps keyboard focus and closes on Escape', async () => {
   })
   const first = focusable('first')
   const last = focusable('last')
+  let pickerOpen = false
   const panel = {
     ownerDocument,
+    querySelector() {
+      return pickerOpen ? {} : null
+    },
     querySelectorAll() {
       return [first, last]
     },
@@ -186,6 +267,35 @@ test('overlay traps keyboard focus and closes on Escape', async () => {
   assert.equal(prevented, true)
   assert.equal(ownerDocument.activeElement, last)
 
+  const portaledDialogControl = {}
+  prevented = false
+  panelNode.props.onKeyDownCapture({
+    key: 'Tab',
+    target: portaledDialogControl,
+    preventDefault() {
+      prevented = true
+    },
+  })
+  assert.equal(prevented, false)
+  assert.equal(disclosure.getSnapshot(), true)
+  panelNode.props.onKeyDownCapture({
+    key: 'Escape',
+    target: portaledDialogControl,
+    preventDefault() {
+      prevented = true
+    },
+  })
+  assert.equal(prevented, false)
+  assert.equal(disclosure.getSnapshot(), true)
+
+  pickerOpen = true
+  panelNode.props.onKeyDownCapture({
+    key: 'Escape',
+    preventDefault() {},
+  })
+  assert.equal(disclosure.getSnapshot(), true)
+
+  pickerOpen = false
   panelNode.props.onKeyDownCapture({
     key: 'Escape',
     preventDefault() {},
@@ -208,6 +318,7 @@ test('declares load-order dependencies for both public shell extension points', 
     assert.equal(pkg.peerDependencies[dependency], '^0.1.1-rc.2')
     assert.equal(pkg.devDependencies[dependency], '0.1.1-rc.2')
   }
+  assert.equal(pkg.devDependencies['@deepseek-ai/dsh-client-ui-primitives'], '0.1.1-rc.2')
 })
 
 test('sidebar surface is accessible and does not replace occupied shell slots', async () => {

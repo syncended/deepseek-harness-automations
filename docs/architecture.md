@@ -32,6 +32,8 @@ Sidebar / Settings UI / HTTP API
 
 The same automation page is available through two additive DSH extension points: `settings.section` keeps the configuration page inside Settings, while `sidebar.footer.action` opens a frame-wide `shell.overlay`. A small client-only disclosure store coordinates the sidebar trigger and overlay; neither surface owns scheduler state, and both read the same package HTTP API.
 
+Interactive chrome uses the ambient `@deepseek-ai/dsh-client-ui-primitives` `Button`, `Menu`, and icon components. Package CSS is limited to the automation-specific layout and composes only public DSH semantic tokens, so theme, menu, focus, and button behavior stay aligned with the host UI.
+
 ### AutomationService
 
 Cordis service `ctx.automations`. It owns input validation, canonical project authorization, metadata discovery, the Web route, and the public executor-registration seam.

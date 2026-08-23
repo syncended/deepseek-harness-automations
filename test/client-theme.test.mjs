@@ -3,15 +3,20 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const clientPath = new URL('../lib/client.js', import.meta.url)
+const primitiveButtonCssPath = new URL('../node_modules/@deepseek-ai/dsh-client-ui-primitives/lib/Button.module.css', import.meta.url)
 
 
-test('uses DSH foreground-aware button tokens in both themes', async () => {
-  const source = await readFile(clientPath, 'utf8')
-  assert.match(source, /--dsw-alias-button-primary-fill/)
-  assert.match(source, /--dsw-alias-button-primary-hover/)
-  assert.match(source, /--dsw-alias-label-primary-foreground/)
-  assert.match(source, /\.dsh-auto-btn-primary\{[^}]*color:var\(--dsh-auto-on-primary\)/)
-  assert.doesNotMatch(source, /\.dsh-auto-btn-primary\{[^}]*color:#fff/)
+test('uses the native DSH Button primitive and its paired theme tokens', async () => {
+  const [source, buttonCss] = await Promise.all([
+    readFile(clientPath, 'utf8'),
+    readFile(primitiveButtonCssPath, 'utf8'),
+  ])
+  assert.match(source, /require\("@deepseek-ai\/dsh-client-ui-primitives"\)/)
+  assert.match(source, /h\(\s*Button,[\s\S]*?variant: "primary"/)
+  assert.doesNotMatch(source, /\.dsh-auto-btn-primary/)
+  assert.match(buttonCss, /--dsw-alias-button-primary-fill/)
+  assert.match(buttonCss, /--dsw-alias-button-primary-hover/)
+  assert.match(buttonCss, /--dsw-alias-label-primary-foreground/)
 })
 
 test('uses existing semantic DSH tokens instead of dark-only fallbacks', async () => {
