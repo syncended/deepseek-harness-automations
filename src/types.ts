@@ -158,6 +158,21 @@ export interface AutomationServiceConfig {
   allowedProjectRoots?: string[]
 }
 
+export interface AutomationModelMeta {
+  provider: string
+  id: string
+  name: string
+  description?: string
+  reasoning?: {
+    efforts: Array<{
+      id: string
+      name: string
+      description?: string
+    }>
+    defaultEffort?: string
+  }
+}
+
 export interface AutomationMeta {
   defaultModel: {
     provider: string
@@ -166,7 +181,12 @@ export interface AutomationMeta {
   }
   providers: Array<{
     id: string
-    models: string[]
+    name: string
+    models: Array<{
+      id: string
+      name: string
+      description?: string
+    }>
   }>
   permissionPresets: string[]
   agentPresets: Array<{
@@ -185,6 +205,7 @@ export interface AutomationServiceApi {
   trigger(id: string): Promise<AutomationRun>
   cancel(runId: string, reason?: string): Promise<AutomationRun>
   metadata(): Promise<AutomationMeta>
+  modelMetadata(provider: string, model: string): Promise<AutomationModelMeta>
   registerExecutor(executor: AutomationExecutor): () => void
 }
 

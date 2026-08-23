@@ -89,6 +89,14 @@ function segment(value: string, label: string): string {
   }
 }
 
+function requiredQueryString(url: URL, name: string): string {
+  const value = url.searchParams.get(name)?.trim()
+  if (value === undefined || value === '' || value.length > 512) {
+    throw new AutomationInputError(`${name} must be a non-empty string of at most 512 characters`)
+  }
+  return value
+}
+
 function parseLimit(url: URL): number {
   const raw = url.searchParams.get('limit')
   if (raw === null) return 100
@@ -123,6 +131,12 @@ export function createAutomationHttpHandler(
       if (parts.length === 1 && parts[0] === 'meta') {
         if (method !== 'GET') return methodNotAllowed(response, ['GET'])
         return sendJson(response, 200, await service.metadata())
+      }
+      if (parts.length === 2 && parts[0] === 'meta' && parts[1] === 'model') {
+        if (method !== 'GET') return methodNotAllowed(response, ['GET'])
+        const provider = requiredQueryString(url, 'provider')
+        const model = requiredQueryString(url, 'model')
+        return sendJson(response, 200, await service.modelMetadata(provider, model))
       }
       if (parts.length === 1 && parts[0] === 'jobs') {
         if (method !== 'POST') return methodNotAllowed(response, ['POST'])

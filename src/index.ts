@@ -19,6 +19,7 @@ import {
   type AutomationJob,
   type AutomationJobSpec,
   type AutomationMeta,
+  type AutomationModelMeta,
   type AutomationRun,
   type AutomationServiceApi,
   type AutomationServiceConfig,
@@ -167,12 +168,17 @@ export class AutomationService extends Service implements AutomationServiceApi {
     const providers = await Promise.all(
       this.ctx.llm.listProviders().map(async (provider) => {
         try {
-          const models = await this.ctx.llm.listModels(provider.id)
-          return { id: provider.id, models: models.map((model) => model.id) }
+          const listedModels = await this.ctx.llm.listModels(provider.id)
+          const models = listedModels.map((model) => ({
+            id: model.id,
+            name: model.name,
+            ...(model.description === undefined ? {} : { description: model.description }),
+          }))
+          return { id: provider.id, name: provider.name, models }
         } catch (error) {
           this.ctx.logger.warn('automations: could not list models for provider %s', provider.id)
           this.ctx.logger.warn(error instanceof Error ? error.stack ?? error.message : String(error))
-          return { id: provider.id, models: [] }
+          return { id: provider.id, name: provider.name, models: [] }
         }
       }),
     )
@@ -192,6 +198,29 @@ export class AutomationService extends Service implements AutomationServiceApi {
       providers,
       permissionPresets: [...this.ctx.permissionPresets.names],
       agentPresets,
+    }
+  }
+
+  async modelMetadata(provider: string, model: string): Promise<AutomationModelMeta> {
+    const resolved = await this.ctx.llm.resolveModelInfo(provider, model)
+    const reasoning = resolved.reasoning === undefined
+      ? undefined
+      : {
+          efforts: resolved.reasoning.efforts.map((effort) => ({
+            id: String(effort.id),
+            name: effort.name,
+            ...(effort.description === undefined ? {} : { description: effort.description }),
+          })),
+          ...(resolved.reasoning.defaultEffort === undefined
+            ? {}
+            : { defaultEffort: String(resolved.reasoning.defaultEffort) }),
+        }
+    return {
+      provider: resolved.provider,
+      id: resolved.id,
+      name: resolved.name,
+      ...(resolved.description === undefined ? {} : { description: resolved.description }),
+      ...(reasoning === undefined ? {} : { reasoning }),
     }
   }
 

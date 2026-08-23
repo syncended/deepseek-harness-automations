@@ -51,13 +51,13 @@ test('renders the Automations center as an in-flow DSH workspace', async () => {
   assert.doesNotMatch(source, /dsh-auto-overlay|backdrop-filter|position:fixed;inset:0/)
 })
 
-test('styles the time zone listbox as an anchored DSH menu surface', async () => {
+test('styles editable combobox listboxes as anchored DSH menu surfaces', async () => {
   const source = await readFile(clientPath, 'utf8')
-  assert.match(source, /useTimeZonePopoverLayout/)
-  assert.match(source, /\.dsh-auto-timezone-popover\{[^}]*position:fixed/)
-  assert.match(source, /\.dsh-auto-timezone-popover\{[^}]*--dsw-specific-menu/)
-  assert.match(source, /\.dsh-auto-timezone-option:hover[^}]*--dsw-alias-interactive-bg-hover/)
-  assert.doesNotMatch(source, /\.dsh-auto-timezone-popover\{[^}]*backdrop-filter/)
+  assert.match(source, /useComboboxPopoverLayout/)
+  assert.match(source, /\.dsh-auto-combobox-popover\{[^}]*position:fixed/)
+  assert.match(source, /\.dsh-auto-combobox-popover\{[^}]*--dsw-specific-menu/)
+  assert.match(source, /\.dsh-auto-combobox-option:hover[^}]*--dsw-alias-interactive-bg-hover/)
+  assert.doesNotMatch(source, /\.dsh-auto-combobox-popover\{[^}]*backdrop-filter/)
 })
 
 test('does not dim an entire disabled job card including live actions', async () => {

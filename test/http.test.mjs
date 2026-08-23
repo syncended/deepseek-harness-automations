@@ -16,6 +16,10 @@ function service() {
       }
     },
     async metadata() { return { defaultModel: { provider: 'p', model: 'm' }, providers: [], permissionPresets: [], agentPresets: [], statePath: '/tmp/state' } },
+    async modelMetadata(provider, model) {
+      calls.push(['model-metadata', provider, model])
+      return { provider, id: model, name: model, reasoning: { efforts: [{ id: 'high', name: 'High' }] } }
+    },
     async create(input) { calls.push(['create', input]); return { id: input.id ?? 'generated' } },
     async update(id, input) { calls.push(['update', id, input]); return { id } },
     async remove(id) { calls.push(['remove', id]) },
@@ -56,6 +60,18 @@ test('serves snapshots and validates list limits', async (t) => {
   assert.equal(Object.hasOwn(body.runs[0], 'snapshot'), false)
   assert.equal(JSON.stringify(body).includes('sensitive-prompt'), false)
   assert.equal((await fetch(`${base}?limit=0`)).status, 400)
+})
+
+test('serves exact-model reasoning metadata with validated query parameters', async (t) => {
+  const { api, base } = await withServer(t)
+  const response = await fetch(`${base}/meta/model?provider=openai-codex&model=gpt-5.6-sol`)
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).reasoning.efforts[0].id, 'high')
+  assert.deepEqual(api.calls, [['model-metadata', 'openai-codex', 'gpt-5.6-sol']])
+  assert.equal((await fetch(`${base}/meta/model?provider=&model=gpt`)).status, 400)
+  assert.equal((await fetch(`${base}/meta/model?provider=p`)).status, 400)
+  assert.equal((await fetch(`${base}/meta/model?provider=${'p'.repeat(513)}&model=m`)).status, 400)
+  assert.equal((await fetch(`${base}/meta/model?provider=p&model=m`, { method: 'POST' })).status, 405)
 })
 
 test('refuses mutations without the explicit same-origin fence', async (t) => {

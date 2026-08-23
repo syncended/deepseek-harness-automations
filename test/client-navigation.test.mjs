@@ -238,7 +238,8 @@ test('offers an accessible searchable IANA time zone combobox', async () => {
   assert.equal(kolkata.label, 'Kolkata')
   assert.match(kolkata.detail, /^Asia\/Kolkata · UTC[+-]\d{2}:\d{2} now/)
 
-  const picker = plugin.TimeZonePicker({ id: 'timezone-field', value: 'UTC', onChange() {} })
+  const pickerNode = plugin.TimeZonePicker({ id: 'timezone-field', value: 'UTC', onChange() {} })
+  const picker = pickerNode.type(pickerNode.props)
   const control = picker.children[0]
   const input = control.children[1]
   assert.equal(input.type, 'input')
@@ -252,10 +253,59 @@ test('offers an accessible searchable IANA time zone combobox', async () => {
 
   assert.match(source, /role: "listbox"/)
   assert.match(source, /role: "option"/)
-  assert.match(source, /className: "dsh-auto-timezone-empty",\s+role: "option",\s+"aria-disabled": "true"/)
+  assert.match(source, /className: "dsh-auto-combobox-empty",\s+role: "option",\s+"aria-disabled": "true"/)
   assert.match(source, /"aria-activedescendant"/)
   assert.match(source, /createPortal\(panel, document\.body\)/)
   assert.doesNotMatch(source, /fieldId\("timezone-list"\)/)
+})
+
+test('uses editable DSH-style selectors for provider and model-owned effort', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const providers = [
+    { id: 'deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' }] },
+    { id: 'openai-codex', name: 'OpenAI Codex', models: [{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }] },
+  ]
+  const providerNode = plugin.ProviderPicker({
+    id: 'provider-field',
+    value: 'open',
+    providers,
+    defaultModel: { provider: 'openai-codex', model: 'gpt-5.6-sol' },
+    onChange() {},
+  })
+  const providerResults = providerNode.props.optionsForQuery('open')
+  assert.equal(providerResults[0].value, 'openai-codex', 'configured providers rank ahead of custom text')
+  assert.equal(providerResults.at(-1).custom, true)
+  assert.equal(providerNode.props.selectedId, 'custom-provider:open')
+  const providerTree = providerNode.type(providerNode.props)
+  const providerInput = providerTree.children[0].children[1]
+  assert.equal(providerInput.props.role, 'combobox')
+  assert.equal(providerInput.props.placeholder, 'Harness default')
+  assert.equal(providerInput.props.list, undefined)
+
+  const effortNode = plugin.ReasoningEffortPicker({
+    id: 'effort-field',
+    value: 'turbo',
+    provider: 'openai-codex',
+    model: 'gpt-5.6-sol',
+    defaultModel: { provider: 'openai-codex', model: 'gpt-5.6-sol', reasoningEffort: 'max' },
+    onChange() {},
+  })
+  const effortResults = effortNode.props.optionsForQuery('')
+  assert.equal(effortResults[0].label, 'Default')
+  assert.equal(effortResults[1].value, 'turbo')
+  assert.equal(effortResults[1].custom, true)
+  assert.equal(effortNode.props.selectedId, 'custom-effort:turbo')
+  assert.match(effortNode.props.panelNotice, /^Loading effort levels/)
+  const effortTree = effortNode.type(effortNode.props)
+  assert.equal(effortTree.children[0].children[1].props.role, 'combobox')
+
+  assert.match(source, /\/meta\/model\?provider=/)
+  assert.match(source, /MODEL_METADATA_CACHE/)
+  assert.match(source, /controller\.abort\(\)/)
+  assert.match(source, /reasoningEffort: ""/)
+  assert.doesNotMatch(source, /fieldId\("provider-list"\)/)
+  assert.doesNotMatch(source, /fieldId\("effort-list"\)/)
+  assert.doesNotMatch(source, /REASONING_EFFORTS/)
 })
 
 test('opens Automations as a disposable center workspace while retaining Settings', async () => {

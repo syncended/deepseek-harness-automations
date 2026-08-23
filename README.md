@@ -59,8 +59,8 @@ dsh plugin --profile web remove @syncended/dsh-automations
 | Time zone | Search by city or region in the picker, or enter `UTC` / an IANA name such as `Europe/Berlin`. Current UTC offsets are shown; DST is handled by `cron-parser`. |
 | Project | Existing absolute directory. Its canonical filesystem identity becomes the Session cwd and `workspace-write` root. |
 | Prompt | The user message sent to a fresh Harness Agent. |
-| Provider / model | Leave both blank to resolve the current Harness default at dispatch time. Set both to pin a route. |
-| Reasoning effort | Optional adapter-owned value. |
+| Provider / model | Choose a configured provider in the searchable picker or enter an unlisted adapter route, then choose or enter its model. Leave both blank to resolve the current Harness default at dispatch time. |
+| Reasoning effort | Choose `Default` or an exact-model effort advertised by the adapter. Custom adapter-owned effort IDs remain editable and are validated when the run starts. |
 | Agent preset | Leave blank for the current Harness default, or select a specific composition. |
 | Permission preset | Bundles DSH sandbox and approval policies. Default: `workspace-write`. |
 | Timeout | Wall-clock run limit. Cancellation is cooperative through the Agent loop. |
