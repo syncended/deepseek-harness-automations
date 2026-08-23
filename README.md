@@ -56,7 +56,7 @@ dsh plugin --profile web remove @syncended/dsh-automations
 |---|---|
 | Name | Human-readable job name. |
 | Cron | Five fields: `minute hour day-of-month month day-of-week`. Example: `0 9 * * 1-5`. |
-| Timezone | `UTC` or an IANA name such as `Europe/Berlin`. DST is handled by `cron-parser`. |
+| Time zone | Search by city or region in the picker, or enter `UTC` / an IANA name such as `Europe/Berlin`. Current UTC offsets are shown; DST is handled by `cron-parser`. |
 | Project | Existing absolute directory. Its canonical filesystem identity becomes the Session cwd and `workspace-write` root. |
 | Prompt | The user message sent to a fresh Harness Agent. |
 | Provider / model | Leave both blank to resolve the current Harness default at dispatch time. Set both to pin a route. |

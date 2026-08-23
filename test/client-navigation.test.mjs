@@ -30,6 +30,12 @@ const reactStub = {
   },
 }
 
+const reactDomStub = {
+  createPortal(child, target) {
+    return { type: 'portal', child, target }
+  },
+}
+
 const primitivesStub = new Proxy({}, {
   get(target, property) {
     if (!(property in target)) target[property] = () => null
@@ -41,10 +47,12 @@ async function loadClientPlugin() {
   const source = await readFile(clientPath, 'utf8')
   let plugin
   const window = {
+    innerWidth: 1440,
     __ModuleLoader__: {
       load(definition) {
         plugin = definition.factory((id) => {
           if (id === 'react') return reactStub
+          if (id === 'react-dom') return reactDomStub
           if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitivesStub
           assert.fail(`unexpected client dependency: ${id}`)
         })
@@ -197,6 +205,59 @@ test('allocates unique form prefixes when separate React roots reuse useId value
   assert.match(source, /formPrefixRef\.current = nextFormInstancePrefix\(reactFormId\)/)
 })
 
+test('offers an accessible searchable IANA time zone combobox', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const search = plugin.__testing.timezoneSearchResults
+
+  assert.equal(search('', 'Europe/Paris')[0], 'Europe/Paris')
+  assert.ok(search('new york', '').includes('America/New_York'))
+  assert.ok(search('buenos aires', '').some((zone) => zone.endsWith('/Buenos_Aires')))
+  assert.ok(search('São Paulo', '').includes('America/Sao_Paulo'))
+  assert.ok(search('moscow', '').includes('Europe/Moscow'))
+  for (const [query, alias] of [
+    ['kolkata', 'Asia/Kolkata'],
+    ['kyiv', 'Europe/Kyiv'],
+    ['nuuk', 'America/Nuuk'],
+  ]) {
+    const canonical = plugin.__testing.canonicalTimezone(alias)
+    assert.ok(search(query, '').includes(canonical), `${query} must find ${canonical}`)
+    assert.equal(plugin.__testing.timezonePreferredValue(canonical), alias)
+  }
+  assert.deepEqual(Array.from(search('.', '')), [])
+  assert.deepEqual(Array.from(search('/', '')), [])
+  const reopened = search('mos', 'mos')
+  assert.ok(reopened.length > 1)
+  assert.equal(plugin.__testing.timezoneNavigationIndex('ArrowDown', -1, reopened.length, true), 0)
+  assert.equal(plugin.__testing.timezoneNavigationIndex('ArrowUp', -1, reopened.length, true), reopened.length - 1)
+  assert.equal(plugin.__testing.canonicalTimezone('europe/berlin'), 'Europe/Berlin')
+  assert.match(plugin.__testing.timezoneOffsetLabel('UTC'), /^UTC\+00:00$/)
+  const copy = plugin.__testing.timezoneOptionPresentation('Europe/Moscow')
+  assert.equal(copy.label, 'Moscow')
+  assert.match(copy.detail, /^Europe\/Moscow · UTC[+-]\d{2}:\d{2} now/)
+  const kolkata = plugin.__testing.timezoneOptionPresentation(plugin.__testing.canonicalTimezone('Asia/Kolkata'))
+  assert.equal(kolkata.label, 'Kolkata')
+  assert.match(kolkata.detail, /^Asia\/Kolkata · UTC[+-]\d{2}:\d{2} now/)
+
+  const picker = plugin.TimeZonePicker({ id: 'timezone-field', value: 'UTC', onChange() {} })
+  const control = picker.children[0]
+  const input = control.children[1]
+  assert.equal(input.type, 'input')
+  assert.equal(input.props.role, 'combobox')
+  assert.equal(input.props['aria-autocomplete'], 'list')
+  assert.equal(input.props['aria-haspopup'], 'listbox')
+  assert.equal(input.props.list, undefined)
+  let homePrevented = false
+  input.props.onKeyDown({ key: 'Home', preventDefault() { homePrevented = true } })
+  assert.equal(homePrevented, false, 'Home must retain native text-caret behavior')
+
+  assert.match(source, /role: "listbox"/)
+  assert.match(source, /role: "option"/)
+  assert.match(source, /className: "dsh-auto-timezone-empty",\s+role: "option",\s+"aria-disabled": "true"/)
+  assert.match(source, /"aria-activedescendant"/)
+  assert.match(source, /createPortal\(panel, document\.body\)/)
+  assert.doesNotMatch(source, /fieldId\("timezone-list"\)/)
+})
+
 test('opens Automations as a disposable center workspace while retaining Settings', async () => {
   const { plugin } = await loadClientPlugin()
   const harness = createClientContext()
@@ -279,6 +340,8 @@ test('declares load-order dependencies for Settings, sidebar, and center workspa
     assert.equal(pkg.devDependencies[dependency], '0.1.1-rc.2')
   }
   assert.equal(pkg.devDependencies['@deepseek-ai/dsh-client-ui-primitives'], '0.1.1-rc.2')
+  assert.equal(pkg.peerDependencies['react-dom'], '^18.2.0')
+  assert.equal(pkg.devDependencies['react-dom'], '^18.2.0')
 })
 
 test('center workspace behaves as a non-modal page with an explicit exit', async () => {
