@@ -8,7 +8,7 @@ import { installModelSelection, type ModelSelection } from '@deepseek-ai/dsh-age
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import { ProjectPolicy } from './project-policy.js'
-import { AUTOMATION_PLUGIN_ID, type AutomationExecutor, type AutomationExecutorContext } from './types.js'
+import type { AutomationExecutor, AutomationExecutorContext } from './types.js'
 
 class AgentRunError extends Error {
   readonly code: string
@@ -157,10 +157,10 @@ export class HarnessAgentExecutor implements AutomationExecutor {
               text: run.snapshot.task.prompt,
             },
           ],
-          source: {
-            kind: 'plugin',
-            plugin: AUTOMATION_PLUGIN_ID,
-          },
+          // This is the run's actual human-authored prompt, not injected
+          // plugin context. The conversation UI renders user-sourced messages
+          // as visible chat turns and plugin-sourced messages as context.
+          source: { kind: 'user' },
         }),
       )
       await agent.whenIdle()
