@@ -81,6 +81,7 @@ async function loadClientPlugin() {
     String,
     Number,
     RegExp,
+    Node: class Node {},
     requestAnimationFrame(callback) {
       callback()
       return 1
@@ -422,13 +423,19 @@ test('uses an editable selector backed by Harness workspaces', async () => {
   assert.doesNotMatch(source, /label: "Working directory"/)
 })
 
-test('uses editable DSH-style selectors for provider and model-owned effort', async () => {
+test('uses one flat DSH-style model list with provider titles and model-owned effort', async () => {
   const { plugin, source } = await loadClientPlugin()
   const providers = [
     { id: 'deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' }] },
     { id: 'openai-codex', name: 'OpenAI Codex', models: [{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }] },
   ]
   assert.equal(plugin.__testing.normalizedProviders([{ id: 'openai-codex', models: ['gpt'] }])[0].name, 'OpenAI Codex')
+  assert.equal(plugin.__testing.modelRoute('openai-codex', 'gpt-5.6-sol'), 'openai-codex/gpt-5.6-sol')
+  assert.deepEqual({ ...plugin.__testing.parseModelRoute(' openai-codex/gpt-5.6-sol ') }, {
+    provider: 'openai-codex',
+    model: 'gpt-5.6-sol',
+  })
+  assert.equal(plugin.__testing.parseModelRoute('gpt-5.6-sol'), null)
   assert.deepEqual(
     Array.from(plugin.__testing.reasoningEffortsForState({ status: 'error', data: null })).map((effort) => effort.id),
     ['off', 'minimal', 'low', 'medium', 'high', 'max'],
@@ -440,22 +447,62 @@ test('uses editable DSH-style selectors for provider and model-owned effort', as
     })).map((effort) => effort.id),
     ['turbo'],
   )
-  const providerNode = plugin.ProviderPicker({
-    id: 'provider-field',
-    value: 'open',
+  const selections = []
+  const modelNode = plugin.ModelPicker({
+    id: 'model-field',
+    provider: 'openai-codex',
+    model: 'gpt-5.6-sol',
     providers,
     defaultModel: { provider: 'openai-codex', model: 'gpt-5.6-sol' },
-    onChange() {},
+    onChange(selection) { selections.push(selection) },
   })
-  const providerResults = providerNode.props.optionsForQuery('open')
-  assert.equal(providerResults[0].value, 'openai-codex', 'configured providers rank ahead of custom text')
-  assert.equal(providerResults.at(-1).custom, true)
-  assert.equal(providerNode.props.selectedId, 'custom-provider:open')
-  const providerTree = providerNode.type(providerNode.props)
-  const providerInput = providerTree.children[0].children[1]
-  assert.equal(providerInput.props.role, 'combobox')
-  assert.equal(providerInput.props.placeholder, 'Harness default')
-  assert.equal(providerInput.props.list, undefined)
+  const modelResults = modelNode.props.optionsForQuery('open')
+  assert.equal(modelResults[0].value, 'openai-codex/gpt-5.6-sol')
+  assert.equal(modelResults[0].label, 'GPT-5.6 Sol')
+  assert.equal(modelResults[0].groupTitle, 'OpenAI Codex')
+  assert.equal(modelResults[0].ariaLabel, 'GPT-5.6 Sol, provider OpenAI Codex')
+  const initialResults = modelNode.props.optionsForQuery('')
+  assert.deepEqual(Array.from(initialResults, ({ groupTitle }) => groupTitle), ['Default', 'DeepSeek', 'OpenAI Codex'])
+  const customResults = modelNode.props.optionsForQuery('custom-provider/custom-model')
+  assert.equal(customResults[0].custom, true)
+  assert.equal(customResults[0].groupTitle, 'Custom route')
+  const fuzzyCollision = modelNode.props.optionsForQuery('openai-codex/gpt-5')
+  assert.equal(fuzzyCollision[0].value, 'openai-codex/gpt-5', 'an exact custom route ranks ahead of fuzzy models')
+  assert.equal(fuzzyCollision[0].custom, true)
+  assert.match(modelNode.props.selectedId, /^model:/)
+  assert.equal(modelNode.props.commitOnBlur, true)
+  assert.equal(modelNode.props.notifySameValue, true)
+  assert.equal(typeof modelNode.props.onCancel, 'function')
+  assert.equal(modelNode.props.displayValue, 'GPT-5.6 Sol')
+  modelNode.props.onChange('openai-codex/gpt-5.6-sol')
+  assert.deepEqual(selections, [], 'reselecting the current model must preserve its reasoning effort')
+  modelNode.props.onChange('deepseek-official/deepseek-v4-pro')
+  assert.deepEqual(selections.map((selection) => ({ ...selection })), [{ provider: 'deepseek-official', model: 'deepseek-v4-pro' }])
+  const modelTree = modelNode.type(modelNode.props)
+  const modelInput = modelTree.children[0].children[1]
+  assert.equal(modelInput.props.role, 'combobox')
+  assert.equal(modelInput.props.placeholder, 'Harness default')
+  assert.equal(modelInput.props.list, undefined)
+  const blurCommits = []
+  const blurTree = plugin.EditableCombobox({
+    id: 'custom-route-field',
+    value: 'custom-provider/custom-model',
+    onChange(value) { blurCommits.push(value) },
+    optionsForQuery() { return [] },
+    selectedId: null,
+    commitExactValue(value) { return plugin.__testing.parseModelRoute(value) ? value : null },
+    placeholder: '',
+    listboxLabel: 'Models',
+    initialTitle: 'Models',
+    searchTitle: 'Models',
+    emptyText: 'None',
+    hintText: '',
+    resultNoun: 'model',
+    invalidMessage: 'Invalid',
+    commitOnBlur: true,
+  })
+  blurTree.children[0].children[1].props.onBlur({ relatedTarget: null })
+  assert.deepEqual(blurCommits, ['custom-provider/custom-model'])
 
   const effortNode = plugin.ReasoningEffortPicker({
     id: 'effort-field',
@@ -478,7 +525,15 @@ test('uses editable DSH-style selectors for provider and model-owned effort', as
   assert.match(source, /MODEL_METADATA_CACHE/)
   assert.match(source, /controller\.abort\(\)/)
   assert.match(source, /reasoningEffort: ""/)
+  assert.match(source, /className: "dsh-auto-combobox-group-title"/)
+  assert.match(source, /"aria-label": option\.ariaLabel/)
+  assert.match(source, /if \(commitOnBlur\)/)
+  assert.match(source, /onCancel\?\.\(\)/)
+  assert.match(source, /if \(nextRoute !== route\) onChange\(parsed\)/)
+  assert.match(source, /onChange\("modelSelection", selection\)/)
+  assert.doesNotMatch(source, /label: "Provider"/)
   assert.doesNotMatch(source, /fieldId\("provider-list"\)/)
+  assert.doesNotMatch(source, /fieldId\("model-list"\)/)
   assert.doesNotMatch(source, /fieldId\("effort-list"\)/)
   assert.doesNotMatch(source, /REASONING_EFFORTS/)
 })
