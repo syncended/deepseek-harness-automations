@@ -108,8 +108,15 @@ function createClientContext() {
       subscribe: () => () => {},
     },
   }
+  const sessionsRuntime = {
+    list: {
+      getSnapshot: () => ({ ids: [], byId: {}, current: 'session-current' }),
+      subscribe: () => () => {},
+    },
+  }
   const ctx = {
     workspaces: workspaceRuntime,
+    sessions: sessionsRuntime,
     effect(run, label = '') {
       if (!/center workspace|workspace state/.test(label)) return undefined
       const dispose = run()
@@ -151,6 +158,7 @@ function createClientContext() {
     injections,
     injectionControls,
     workspaceRuntime,
+    sessionsRuntime,
     disposeEffects() {
       for (const dispose of effectDisposers.reverse()) dispose()
     },
@@ -597,7 +605,9 @@ test('opens Automations as a disposable center workspace while retaining Setting
   assert.equal(settingsTree.props.className, 'dsh-auto-root')
   assert.equal(settingsTree.children[0].children[0].children[0].props.className, undefined)
 
-  const disclosure = harness.registrations[1].options.inject().disclosure
+  const sidebarInjection = harness.registrations[1].options.inject()
+  const disclosure = sidebarInjection.disclosure
+  assert.equal(sidebarInjection.sessionsRuntime, harness.sessionsRuntime)
   assert.equal(disclosure.getSnapshot(), false)
   disclosure.open()
 
@@ -675,10 +685,12 @@ test('recognizes sidebar session navigation even when the current chat is clicke
 
   assert.equal(plugin.__testing.sidebarWorkspaceRegion(trigger), region)
   assert.equal(plugin.__testing.workspaceNavigationRowFromClick(label, region), row)
+  assert.equal(plugin.__testing.workspaceNavigationRowFromClick(label), row)
   assert.equal(plugin.__testing.workspaceNavigationRowFromClick(actionTarget, region), null)
   region.contains = (candidate) => candidate === searchRow
   assert.equal(plugin.__testing.workspaceNavigationRowFromClick(searchRow, region), searchRow)
-  assert.match(source, /document\.addEventListener\("click", onWorkspaceClick, true\)/)
+  assert.match(source, /document\.addEventListener\("click", onWorkspaceClick\)/)
+  assert.doesNotMatch(source, /document\.addEventListener\("click", onWorkspaceClick, true\)/)
   assert.match(source, /if \(!disclosure\.getSnapshot\(\)\) return/)
   assert.match(source, /restoreTriggerFocusRef\.current = false/)
 })
