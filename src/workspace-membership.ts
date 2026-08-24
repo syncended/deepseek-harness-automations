@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { Workspace, WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { AUTOMATION_PLUGIN_ID, type AutomationRun } from './types.js'
@@ -54,12 +54,15 @@ export async function reconcileAutomationWorkspaceMembership(
 // recover sessions even when their bounded run and job records are gone.
 const VISIBLE_AUTOMATION_PROMPT_RELEASED_AT = Date.parse('2026-08-24T12:56:39.000Z')
 
-function isAutomationSession(events: readonly SessionEvent[], createdAt: number): boolean {
+function isAutomationSession(events: readonly SessionEvent[], header: SessionHeader): boolean {
   return events.some((event) => {
     if (event.type !== 'user/message') return false
     const source = event.data.source
     if (source.kind === 'plugin' && source.plugin === AUTOMATION_PLUGIN_ID) return true
-    return source.kind === 'user' && createdAt >= VISIBLE_AUTOMATION_PROMPT_RELEASED_AT
+    return source.kind === 'user'
+      && !('rpcId' in source)
+      && header.agentPreset !== undefined
+      && header.createdAt >= VISIBLE_AUTOMATION_PROMPT_RELEASED_AT
   })
 }
 
@@ -99,7 +102,7 @@ export async function backfillPrunedAutomationWorkspaceMembership(
 
     try {
       const inspection = await ctx.sessionPersistence.inspect(header.id)
-      if (!isAutomationSession(inspection.events, header.createdAt)) continue
+      if (!isAutomationSession(inspection.events, header)) continue
       await workspace.attachSession(header.id)
       grouped.add(header.id)
     } catch (error) {

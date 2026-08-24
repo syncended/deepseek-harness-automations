@@ -68,7 +68,19 @@ test('backfills pruned legacy automation sessions from session persistence once'
   const headers = [
     { id: 'session-grouped', cwd: '/workspace', createdAt: beforeVisiblePrompts },
     { id: 'session-legacy', cwd: '/workspace', createdAt: beforeVisiblePrompts },
-    { id: 'session-v082', cwd: '/workspace', createdAt: afterVisiblePrompts },
+    {
+      id: 'session-v082',
+      cwd: '/workspace',
+      createdAt: afterVisiblePrompts,
+      agentPreset: 'default',
+    },
+    {
+      id: 'session-ui',
+      cwd: '/workspace',
+      createdAt: afterVisiblePrompts,
+      agentPreset: 'default',
+    },
+    { id: 'session-headless', cwd: '/workspace', createdAt: afterVisiblePrompts },
     { id: 'session-normal', cwd: '/workspace', createdAt: beforeVisiblePrompts },
     { id: 'session-no-cwd', createdAt: afterVisiblePrompts },
   ]
@@ -78,6 +90,8 @@ test('backfills pruned legacy automation sessions from session persistence once'
       text: 'Legacy task',
     }],
     ['session-v082', { source: { kind: 'user' }, text: 'Scheduled task' }],
+    ['session-ui', { source: { kind: 'user', rpcId: 'rpc-1' }, text: 'UI task' }],
+    ['session-headless', { source: { kind: 'user' }, text: 'Headless task' }],
     ['session-normal', { source: { kind: 'user' }, text: 'Hello' }],
   ])
   const ctx = {
@@ -106,6 +120,12 @@ test('backfills pruned legacy automation sessions from session persistence once'
   const complete = await backfillPrunedAutomationWorkspaceMembership(ctx, { warn() {} })
 
   assert.equal(complete, true)
-  assert.deepEqual(inspected, ['session-legacy', 'session-v082', 'session-normal'])
+  assert.deepEqual(inspected, [
+    'session-legacy',
+    'session-v082',
+    'session-ui',
+    'session-headless',
+    'session-normal',
+  ])
   assert.deepEqual(attached, ['session-legacy', 'session-v082'])
 })
