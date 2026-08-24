@@ -605,6 +605,45 @@ test('opens Automations as a disposable center workspace while retaining Setting
   assert.equal(reopenedCenter.disposed, true)
 })
 
+test('recognizes sidebar session navigation even when the current chat is clicked', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const region = { contains: (candidate) => candidate === row }
+  const footer = { previousElementSibling: region }
+  const footerActions = { parentElement: footer }
+  const action = { parentElement: footerActions }
+  const trigger = { closest: (selector) => selector === '.dsh-auto-sidebar-action' ? action : null }
+  const row = {}
+  const label = {
+    closest(selector) {
+      if (selector === '[role="treeitem"][aria-selected]') return row
+      return null
+    },
+  }
+  const actionButton = {}
+  const actionTarget = {
+    closest(selector) {
+      if (selector === '[role="treeitem"][aria-selected]') return row
+      if (selector === 'button') return actionButton
+      return null
+    },
+  }
+  const searchRow = {
+    closest(selector) {
+      if (selector === '[role="treeitem"][aria-selected]' || selector === 'button') return searchRow
+      return null
+    },
+  }
+
+  assert.equal(plugin.__testing.sidebarWorkspaceRegion(trigger), region)
+  assert.equal(plugin.__testing.workspaceNavigationRowFromClick(label, region), row)
+  assert.equal(plugin.__testing.workspaceNavigationRowFromClick(actionTarget, region), null)
+  region.contains = (candidate) => candidate === searchRow
+  assert.equal(plugin.__testing.workspaceNavigationRowFromClick(searchRow, region), searchRow)
+  assert.match(source, /document\.addEventListener\("click", onWorkspaceClick, true\)/)
+  assert.match(source, /if \(!disclosure\.getSnapshot\(\)\) return/)
+  assert.match(source, /restoreTriggerFocusRef\.current = false/)
+})
+
 test('declares load-order dependencies for Settings, sidebar, and center workspace', async () => {
   const pkg = JSON.parse(await readFile(packagePath, 'utf8'))
   assert.deepEqual(pkg.dsh.client.inject, [
