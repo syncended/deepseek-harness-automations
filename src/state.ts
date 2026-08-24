@@ -22,6 +22,7 @@ export function isTerminalRunStatus(status: AutomationRunStatus): boolean {
 export function createEmptyState(): AutomationState {
   return {
     schemaVersion: STATE_SCHEMA_VERSION,
+    workspaceMembershipMigrationVersion: 0,
     revision: 0,
     jobs: {},
     runs: {},

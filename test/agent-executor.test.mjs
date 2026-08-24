@@ -5,13 +5,16 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { HarnessAgentExecutor } from '../dist/agent-executor.js'
 
-test('records the automation prompt as a visible user chat message', async (t) => {
+test('records a visible prompt and attaches the session to its DSH workspace', async (t) => {
   const created = await mkdtemp(join(tmpdir(), 'dsh-automations-agent-'))
   const cwd = await realpath(created)
   t.after(() => rm(created, { recursive: true, force: true }))
 
   let submitted
   let persistedEvents = []
+  let resolvedWorkspacePath
+  const workspaceSessions = []
+  const attachmentOrder = []
   const session = { seq: 0, events: [] }
   const agent = {
     session,
@@ -42,6 +45,17 @@ test('records the automation prompt as a visible user chat message', async (t) =
     permissionPresets: {
       resolve() {},
     },
+    workspaceRegistry: {
+      async resolveByPath(path) {
+        resolvedWorkspacePath = path
+        return {
+          async attachSession(sessionId) {
+            workspaceSessions.push(sessionId)
+            attachmentOrder.push('workspace')
+          },
+        }
+      },
+    },
     agents: {
       create: async () => ({ agent, dispose: async () => {} }),
     },
@@ -68,7 +82,10 @@ test('records the automation prompt as a visible user chat message', async (t) =
       },
     },
     signal: new AbortController().signal,
-    attachSession: async (sessionId) => { attached.push(sessionId) },
+    attachSession: async (sessionId) => {
+      attached.push(sessionId)
+      attachmentOrder.push('run')
+    },
   })
 
   assert.equal(submitted.role, 'user')
@@ -80,5 +97,8 @@ test('records the automation prompt as a visible user chat message', async (t) =
   assert.deepEqual(persistedPrompt.data.content, [{ type: 'text', text: 'Run the visible task.' }])
   assert.equal(attached.length, 1)
   assert.equal(result.sessionId, attached[0])
+  assert.equal(resolvedWorkspacePath, cwd)
+  assert.deepEqual(workspaceSessions, [result.sessionId])
+  assert.deepEqual(attachmentOrder, ['workspace', 'run'])
   assert.equal(result.output, 'done')
 })

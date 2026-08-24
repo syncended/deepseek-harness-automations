@@ -9,6 +9,7 @@ import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import { ProjectPolicy } from './project-policy.js'
 import type { AutomationExecutor, AutomationExecutorContext } from './types.js'
+import { automationWorkspaceRegistry } from './workspace-membership.js'
 
 class AgentRunError extends Error {
   readonly code: string
@@ -104,6 +105,7 @@ export class HarnessAgentExecutor implements AutomationExecutor {
     const execution = run.snapshot.execution
     const authorizedCwd = await this.projectPolicy.authorize(execution.cwd)
     await assertCanonicalDirectory(authorizedCwd)
+    const workspace = await automationWorkspaceRegistry(this.ctx).resolveByPath(authorizedCwd)
     if (signal.aborted) throw signal.reason
 
     const preset = await this.ctx.agentPresets.resolve(execution.agentPreset)
@@ -116,7 +118,7 @@ export class HarnessAgentExecutor implements AutomationExecutor {
     const handle = await this.ctx.agents.create({
       sessionId,
       meta: {
-        cwd: execution.cwd,
+        cwd: authorizedCwd,
         agentPreset: preset.id,
       },
       agentOptions: {
@@ -145,6 +147,7 @@ export class HarnessAgentExecutor implements AutomationExecutor {
     }
     signal.addEventListener('abort', cancel, { once: true })
     try {
+      await workspace?.attachSession(sessionId)
       await context.attachSession(String(sessionId))
       if (signal.aborted) throw signal.reason
       await agent.whenIdle()

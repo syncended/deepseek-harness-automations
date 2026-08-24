@@ -3,7 +3,19 @@ import { mkdtemp, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { AutomationStateStore } from '../dist/store.js'
+import { AutomationStateStore, decodeAutomationState } from '../dist/store.js'
+
+test('defaults the workspace migration marker in pre-0.8.3 state', () => {
+  const state = decodeAutomationState({
+    schemaVersion: 1,
+    revision: 0,
+    jobs: {},
+    runs: {},
+    runOrder: [],
+    occurrences: {},
+  })
+  assert.equal(state.workspaceMembershipMigrationVersion, 0)
+})
 
 function spec(cwd) {
   return {

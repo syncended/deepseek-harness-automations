@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 export const STATE_SCHEMA_VERSION = 1 as const
+export const WORKSPACE_MEMBERSHIP_MIGRATION_VERSION = 1 as const
 export const AUTOMATION_PLUGIN_ID = '@syncended/dsh-automations' as const
 
 export type OverlapPolicy = 'skip' | 'queue' | 'allow'
@@ -99,6 +100,7 @@ export interface AutomationRun {
 
 export interface AutomationState {
   schemaVersion: typeof STATE_SCHEMA_VERSION
+  workspaceMembershipMigrationVersion: number
   revision: number
   jobs: Record<string, AutomationJob>
   runs: Record<string, AutomationRun>

@@ -209,6 +209,9 @@ export function decodeAutomationState(value: unknown): AutomationState {
 
   return {
     schemaVersion: STATE_SCHEMA_VERSION,
+    workspaceMembershipMigrationVersion: input.workspaceMembershipMigrationVersion === undefined
+      ? 0
+      : nonNegativeInteger(input.workspaceMembershipMigrationVersion, 'state.workspaceMembershipMigrationVersion'),
     revision: nonNegativeInteger(input.revision, 'state.revision'),
     jobs,
     runs,

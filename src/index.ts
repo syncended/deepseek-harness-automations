@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import { HarnessAgentExecutor } from './agent-executor.js'
 import { createAutomationHttpHandler } from './http.js'
 import { ProjectPolicy } from './project-policy.js'
@@ -26,11 +27,16 @@ import {
   type AutomationSnapshot,
   type CreateAutomationJobRequest,
   type UpdateAutomationJobRequest,
+  WORKSPACE_MEMBERSHIP_MIGRATION_VERSION,
 } from './types.js'
 import {
   AutomationInputError,
   normalizeJobSpec,
 } from './validation.js'
+import {
+  backfillPrunedAutomationWorkspaceMembership,
+  reconcileAutomationWorkspaceMembership,
+} from './workspace-membership.js'
 
 export * from './cron.js'
 export * from './project-policy.js'
@@ -74,6 +80,8 @@ export class AutomationService extends Service implements AutomationServiceApi {
     'agentDefaultModel',
     'agentPresets',
     'permissionPresets',
+    'workspaceRegistry',
+    'sessionPersistence',
     'llm',
     'webServer',
   ]
@@ -101,6 +109,20 @@ export class AutomationService extends Service implements AutomationServiceApi {
   async *[Service.init](): AsyncGenerator<() => Promise<void>, void, unknown> {
     this.projectPolicy = await ProjectPolicy.create(this.configuredRoots)
     await this.store.open(new Date())
+    const openedState = this.store.snapshot()
+    await reconcileAutomationWorkspaceMembership(
+      this.ctx,
+      Object.values(openedState.runs),
+      this.ctx.logger,
+    )
+    if (openedState.workspaceMembershipMigrationVersion < WORKSPACE_MEMBERSHIP_MIGRATION_VERSION) {
+      const complete = await backfillPrunedAutomationWorkspaceMembership(this.ctx, this.ctx.logger)
+      if (complete) {
+        await this.store.mutate((state) => {
+          state.workspaceMembershipMigrationVersion = WORKSPACE_MEMBERSHIP_MIGRATION_VERSION
+        })
+      }
+    }
     const unregisterExecutor = this.scheduler.registerExecutor(
       new HarnessAgentExecutor(this.ctx, this.projectPolicy),
     )
