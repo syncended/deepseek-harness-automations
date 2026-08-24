@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { Workspace, WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
-import { AUTOMATION_PLUGIN_ID, type AutomationRun } from './types.js'
+import { AUTOMATION_PLUGIN_ID, type AutomationJob, type AutomationRun } from './types.js'
 
 interface WorkspaceReconcileLogger {
   warn(message: string, ...args: unknown[]): void
@@ -49,19 +49,39 @@ export async function reconcileAutomationWorkspaceMembership(
   }
 }
 
-function isLegacyAutomationSession(events: readonly SessionEvent[]): boolean {
+function userMessageText(event: Extract<SessionEvent, { type: 'user/message' }>): string {
+  return event.data.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+}
+
+function isAutomationSession(
+  events: readonly SessionEvent[],
+  currentJobPrompts: ReadonlySet<string>,
+): boolean {
   return events.some((event) => {
     if (event.type !== 'user/message') return false
     const source = event.data.source
-    return source.kind === 'plugin' && source.plugin === AUTOMATION_PLUGIN_ID
+    if (source.kind === 'plugin' && source.plugin === AUTOMATION_PLUGIN_ID) return true
+    // v0.8.2 made automation prompts user-visible before workspace ownership
+    // was added. Match those sessions against the surviving job definition.
+    return source.kind === 'user' && currentJobPrompts.has(userMessageText(event))
   })
 }
 
 /** One-time discovery for automation sessions already pruned from bounded run history. */
 export async function backfillPrunedAutomationWorkspaceMembership(
   ctx: Context,
+  jobs: readonly AutomationJob[],
   logger: WorkspaceReconcileLogger,
 ): Promise<boolean> {
+  const promptsByCwd = new Map<string, Set<string>>()
+  for (const job of jobs) {
+    const prompts = promptsByCwd.get(job.execution.cwd) ?? new Set<string>()
+    prompts.add(job.task.prompt)
+    promptsByCwd.set(job.execution.cwd, prompts)
+  }
   const registry = automationWorkspaceRegistry(ctx)
   const grouped = new Set(registry.list().flatMap((workspace) => workspace.sessionIds))
   const workspaceByCwd = new Map<string, Workspace | undefined>()
@@ -93,7 +113,8 @@ export async function backfillPrunedAutomationWorkspaceMembership(
 
     try {
       const inspection = await ctx.sessionPersistence.inspect(header.id)
-      if (!isLegacyAutomationSession(inspection.events)) continue
+      const currentJobPrompts = promptsByCwd.get(header.cwd) ?? new Set<string>()
+      if (!isAutomationSession(inspection.events, currentJobPrompts)) continue
       await workspace.attachSession(header.id)
       grouped.add(header.id)
     } catch (error) {

@@ -116,7 +116,11 @@ export class AutomationService extends Service implements AutomationServiceApi {
       this.ctx.logger,
     )
     if (openedState.workspaceMembershipMigrationVersion < WORKSPACE_MEMBERSHIP_MIGRATION_VERSION) {
-      const complete = await backfillPrunedAutomationWorkspaceMembership(this.ctx, this.ctx.logger)
+      const complete = await backfillPrunedAutomationWorkspaceMembership(
+        this.ctx,
+        Object.values(openedState.jobs),
+        this.ctx.logger,
+      )
       if (complete) {
         await this.store.mutate((state) => {
           state.workspaceMembershipMigrationVersion = WORKSPACE_MEMBERSHIP_MIGRATION_VERSION

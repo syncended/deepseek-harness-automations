@@ -66,12 +66,17 @@ test('backfills pruned legacy automation sessions from session persistence once'
   const headers = [
     { id: 'session-grouped', cwd: '/workspace' },
     { id: 'session-legacy', cwd: '/workspace' },
+    { id: 'session-v082', cwd: '/workspace' },
     { id: 'session-normal', cwd: '/workspace' },
     { id: 'session-no-cwd' },
   ]
-  const sources = new Map([
-    ['session-legacy', { kind: 'plugin', plugin: '@syncended/dsh-automations' }],
-    ['session-normal', { kind: 'user' }],
+  const messages = new Map([
+    ['session-legacy', {
+      source: { kind: 'plugin', plugin: '@syncended/dsh-automations' },
+      text: 'Legacy task',
+    }],
+    ['session-v082', { source: { kind: 'user' }, text: 'Scheduled task' }],
+    ['session-normal', { source: { kind: 'user' }, text: 'Hello' }],
   ])
   const ctx = {
     workspaceRegistry: {
@@ -82,16 +87,26 @@ test('backfills pruned legacy automation sessions from session persistence once'
       list: async () => headers,
       async inspect(sessionId) {
         inspected.push(sessionId)
+        const message = messages.get(sessionId)
         return {
-          events: [{ type: 'user/message', data: { source: sources.get(sessionId) } }],
+          events: [{
+            type: 'user/message',
+            data: {
+              source: message.source,
+              content: [{ type: 'text', text: message.text }],
+            },
+          }],
         }
       },
     },
   }
 
-  const complete = await backfillPrunedAutomationWorkspaceMembership(ctx, { warn() {} })
+  const complete = await backfillPrunedAutomationWorkspaceMembership(ctx, [{
+    execution: { cwd: '/workspace' },
+    task: { prompt: 'Scheduled task' },
+  }], { warn() {} })
 
   assert.equal(complete, true)
-  assert.deepEqual(inspected, ['session-legacy', 'session-normal'])
-  assert.deepEqual(attached, ['session-legacy'])
+  assert.deepEqual(inspected, ['session-legacy', 'session-v082', 'session-normal'])
+  assert.deepEqual(attached, ['session-legacy', 'session-v082'])
 })
