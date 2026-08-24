@@ -63,12 +63,14 @@ test('backfills pruned legacy automation sessions from session persistence once'
       attached.push(sessionId)
     },
   }
+  const beforeVisiblePrompts = Date.parse('2026-08-24T12:56:38.000Z')
+  const afterVisiblePrompts = Date.parse('2026-08-24T12:56:40.000Z')
   const headers = [
-    { id: 'session-grouped', cwd: '/workspace' },
-    { id: 'session-legacy', cwd: '/workspace' },
-    { id: 'session-v082', cwd: '/workspace' },
-    { id: 'session-normal', cwd: '/workspace' },
-    { id: 'session-no-cwd' },
+    { id: 'session-grouped', cwd: '/workspace', createdAt: beforeVisiblePrompts },
+    { id: 'session-legacy', cwd: '/workspace', createdAt: beforeVisiblePrompts },
+    { id: 'session-v082', cwd: '/workspace', createdAt: afterVisiblePrompts },
+    { id: 'session-normal', cwd: '/workspace', createdAt: beforeVisiblePrompts },
+    { id: 'session-no-cwd', createdAt: afterVisiblePrompts },
   ]
   const messages = new Map([
     ['session-legacy', {
@@ -101,10 +103,7 @@ test('backfills pruned legacy automation sessions from session persistence once'
     },
   }
 
-  const complete = await backfillPrunedAutomationWorkspaceMembership(ctx, [{
-    execution: { cwd: '/workspace' },
-    task: { prompt: 'Scheduled task' },
-  }], { warn() {} })
+  const complete = await backfillPrunedAutomationWorkspaceMembership(ctx, { warn() {} })
 
   assert.equal(complete, true)
   assert.deepEqual(inspected, ['session-legacy', 'session-v082', 'session-normal'])
