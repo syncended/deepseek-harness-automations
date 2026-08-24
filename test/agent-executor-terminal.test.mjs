@@ -13,6 +13,7 @@ test('fails promptly when a turn ends before recording the automation prompt', a
   const listeners = new Set()
   const session = { seq: 0, events: [] }
   let provenanceRegistered = false
+  let titleApplied = false
   let workspaceAttached = false
   let runAttached = false
   const agent = {
@@ -63,6 +64,13 @@ test('fails promptly when a turn ends before recording the automation prompt', a
     agents: {
       create: async () => ({ agent, dispose: async () => {} }),
     },
+    sessionTitle: {
+      rename(renamedSession, title) {
+        assert.equal(renamedSession, session)
+        assert.equal(title, 'Failing automation')
+        titleApplied = true
+      },
+    },
     sessions: {
       async flush() {},
     },
@@ -73,6 +81,8 @@ test('fails promptly when a turn ends before recording the automation prompt', a
   await assert.rejects(
     executor.execute({
       run: {
+        jobId: 'failing-automation',
+        jobName: 'Failing automation',
         snapshot: {
           task: { prompt: 'Prompt that cannot be recorded.' },
           execution: {
@@ -93,6 +103,7 @@ test('fails promptly when a turn ends before recording the automation prompt', a
     { message: 'pre-step failed', code: 'PRE_STEP_FAILED' },
   )
   assert.equal(provenanceRegistered, true)
+  assert.equal(titleApplied, true)
   assert.equal(workspaceAttached, false)
   assert.equal(runAttached, false)
   assert.equal(listeners.size, 0)

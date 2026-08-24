@@ -3,7 +3,8 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { HarnessAgentExecutor } from '../dist/agent-executor.js'
+import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
+import { applyAutomationSessionTitle, HarnessAgentExecutor } from '../dist/agent-executor.js'
 
 test('records a visible prompt and attaches the session to its DSH workspace', async (t) => {
   const created = await mkdtemp(join(tmpdir(), 'dsh-automations-agent-'))
@@ -14,6 +15,7 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   let persistedEvents = []
   let resolvedWorkspacePath
   const workspaceSessions = []
+  const renamed = []
   const attachmentOrder = []
   const sessionEventListeners = new Set()
   let promptFlushed = false
@@ -23,19 +25,20 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
     async whenIdle() {},
     followup(message) {
       submitted = message
+      const firstEvent = { seq: session.seq, type: 'user/message', data: message }
       session.events.push(
-        { seq: 0, type: 'user/message', data: message },
-        { seq: 1, type: 'turn/start' },
+        firstEvent,
+        { seq: session.seq + 1, type: 'turn/start' },
         {
-          seq: 2,
+          seq: session.seq + 2,
           type: 'assistant/message',
           data: { message: { content: [{ type: 'text', text: 'done' }] } },
         },
-        { seq: 3, type: 'turn/end', data: { reason: { kind: 'completed' } } },
+        { seq: session.seq + 3, type: 'turn/end', data: { reason: { kind: 'completed' } } },
       )
-      session.seq = 4
+      session.seq += 4
       attachmentOrder.push('prompt')
-      for (const listener of sessionEventListeners) listener(session, session.events[0])
+      for (const listener of sessionEventListeners) listener(session, firstEvent)
     },
     cancel() {},
   }
@@ -68,6 +71,18 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
     agents: {
       create: async () => ({ agent, dispose: async () => {} }),
     },
+    sessionTitle: {
+      rename(renamedSession, title) {
+        assert.equal(renamedSession, session)
+        renamed.push(title)
+        session.events.push({
+          seq: session.seq,
+          type: 'session/title',
+          data: { title, messageSeqs: [], source: { kind: 'user' } },
+        })
+        session.seq += 1
+      },
+    },
     sessions: {
       flush: async (flushed) => {
         persistedEvents = flushed.events.map((event) => structuredClone(event))
@@ -87,6 +102,8 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   const attached = []
   const result = await executor.execute({
     run: {
+      jobId: 'nightly-reports',
+      jobName: 'Nightly reports',
       snapshot: {
         task: { prompt: 'Run the visible task.' },
         execution: {
@@ -113,6 +130,10 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   assert.ok(persistedPrompt, 'the prompt must be present in durable session events')
   assert.deepEqual(persistedPrompt.data.source, { kind: 'user' })
   assert.deepEqual(persistedPrompt.data.content, [{ type: 'text', text: 'Run the visible task.' }])
+  const persistedTitle = persistedEvents.find((event) => event.type === 'session/title')
+  assert.equal(persistedTitle?.data.title, 'Nightly reports')
+  assert.deepEqual(persistedTitle?.data.source, { kind: 'user' })
+  assert.deepEqual(renamed, ['Nightly reports'])
   assert.deepEqual(registered, [result.sessionId])
   assert.equal(attached.length, 1)
   assert.equal(result.sessionId, attached[0])
@@ -121,4 +142,23 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   assert.deepEqual(attachmentOrder, ['prompt', 'flush', 'workspace', 'run'])
   assert.equal(sessionEventListeners.size, 0)
   assert.equal(result.output, 'done')
+})
+
+test('falls back to the automation id when its legacy name is not a visible title', () => {
+  const session = {}
+  const renamed = []
+  const service = {
+    rename(actualSession, title) {
+      assert.equal(actualSession, session)
+      renamed.push(title)
+      if (title === '\u001b[31m') throw new SessionTitleInvalidError('invalid title')
+    },
+  }
+
+  applyAutomationSessionTitle(service, session, {
+    jobId: 'legacy-automation',
+    jobName: '\u001b[31m',
+  })
+
+  assert.deepEqual(renamed, ['\u001b[31m', 'legacy-automation'])
 })

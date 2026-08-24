@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-session-title'
 import { HarnessAgentExecutor } from './agent-executor.js'
 import { createAutomationHttpHandler } from './http.js'
 import { ProjectPolicy } from './project-policy.js'
@@ -83,6 +84,7 @@ export class AutomationService extends Service implements AutomationServiceApi {
     'permissionPresets',
     'workspaceRegistry',
     'sessionPersistence',
+    'sessionTitle',
     'llm',
     'webServer',
   ]

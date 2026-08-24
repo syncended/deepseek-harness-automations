@@ -7,6 +7,10 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import { installModelSelection, type ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId, type Session, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
+import {
+  SessionTitleInvalidError,
+  type SessionTitleService,
+} from '@deepseek-ai/dsh-session-title'
 import { ProjectPolicy } from './project-policy.js'
 import type { AutomationExecutor, AutomationExecutorContext } from './types.js'
 import { automationWorkspaceRegistry } from './workspace-membership.js'
@@ -134,6 +138,21 @@ function resolveSelection(ctx: Context, run: AutomationExecutorContext['run']): 
   }
 }
 
+export function applyAutomationSessionTitle(
+  service: Pick<SessionTitleService, 'rename'>,
+  session: Session,
+  automation: { jobName: string; jobId: string },
+): void {
+  try {
+    service.rename(session, automation.jobName)
+  } catch (error) {
+    if (!(error instanceof SessionTitleInvalidError)) throw error
+    // Job ids are normalized visible ASCII, so even a legacy name containing
+    // only stripped control characters still gets a stable non-empty title.
+    service.rename(session, automation.jobId)
+  }
+}
+
 /** Runs one admitted automation through a fresh, persisted, preset-composed Harness Agent. */
 export class HarnessAgentExecutor implements AutomationExecutor {
   readonly kind = 'agent'
@@ -193,6 +212,7 @@ export class HarnessAgentExecutor implements AutomationExecutor {
     signal.addEventListener('abort', cancel, { once: true })
     try {
       await context.registerSession(String(sessionId))
+      applyAutomationSessionTitle(this.ctx.sessionTitle, agent.session, run)
       if (signal.aborted) throw signal.reason
       await agent.whenIdle()
       if (signal.aborted) throw signal.reason
