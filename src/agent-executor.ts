@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { installModelSelection, type ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import { SessionId, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import { ProjectPolicy } from './project-policy.js'
 import type { AutomationExecutor, AutomationExecutorContext } from './types.js'
 import { automationWorkspaceRegistry } from './workspace-membership.js'
@@ -69,6 +69,51 @@ async function assertCanonicalDirectory(cwd: string): Promise<void> {
       `Workspace path no longer resolves to its saved filesystem identity: expected ${cwd}, found ${canonical}`,
       'PROJECT_IDENTITY_CHANGED',
     )
+  }
+}
+
+function whenUserMessageRecorded(
+  ctx: Context,
+  target: Session,
+  messageId: string,
+  signal: AbortSignal,
+): { ready: Promise<void>; dispose(): void } {
+  let settled = false
+  let off = () => {}
+  let onAbort = () => {}
+  const cleanup = () => {
+    off()
+    signal.removeEventListener('abort', onAbort)
+  }
+  let resolveReady!: () => void
+  let rejectReady!: (reason: unknown) => void
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+  // The producer can throw before it awaits `ready`; keep an abort rejection
+  // from becoming an unhandled promise while preserving it for the real await.
+  void ready.catch(() => undefined)
+  const settle = (action: () => void) => {
+    if (settled) return
+    settled = true
+    cleanup()
+    action()
+  }
+  onAbort = () => settle(() => rejectReady(signal.reason))
+  off = ctx.on('session/event', (session, event) => {
+    if (session !== target || event.type !== 'user/message' || String(event.data.id) !== messageId) return
+    settle(resolveReady)
+  })
+  if (signal.aborted) onAbort()
+  else signal.addEventListener('abort', onAbort, { once: true })
+  return {
+    ready,
+    dispose: () => {
+      if (settled) return
+      settled = true
+      cleanup()
+    },
   }
 }
 
@@ -147,26 +192,47 @@ export class HarnessAgentExecutor implements AutomationExecutor {
     }
     signal.addEventListener('abort', cancel, { once: true })
     try {
-      await workspace?.attachSession(sessionId)
-      await context.attachSession(String(sessionId))
       if (signal.aborted) throw signal.reason
       await agent.whenIdle()
+      if (signal.aborted) throw signal.reason
       const firstSeq = agent.session.seq
-      agent.followup(
-        createUserMessage({
-          content: [
-            {
-              type: 'text',
-              text: run.snapshot.task.prompt,
-            },
-          ],
-          // This is the run's actual human-authored prompt, not injected
-          // plugin context. The conversation UI renders user-sourced messages
-          // as visible chat turns and plugin-sourced messages as context.
-          source: { kind: 'user' },
-        }),
+      const prompt = createUserMessage({
+        content: [
+          {
+            type: 'text',
+            text: run.snapshot.task.prompt,
+          },
+        ],
+        // This is the run's actual human-authored prompt, not injected
+        // plugin context. The conversation UI renders user-sourced messages
+        // as visible chat turns and plugin-sourced messages as context.
+        source: { kind: 'user' },
+      })
+      const promptId = String(prompt.id)
+      const promptRecorded = whenUserMessageRecorded(
+        agent.ctx,
+        agent.session,
+        promptId,
+        signal,
       )
-      await agent.whenIdle()
+      let turnSettled: Promise<void>
+      try {
+        agent.followup(prompt)
+        turnSettled = agent.whenIdle()
+        await Promise.race([promptRecorded.ready, turnSettled])
+        const promptExists = agent.session.events.some(
+          (event) => event.type === 'user/message' && String(event.data.id) === promptId,
+        )
+        if (!promptExists) {
+          throw failureFromReason(summarize(agent.session.events, firstSeq).reason)
+        }
+      } finally {
+        promptRecorded.dispose()
+      }
+      await this.ctx.sessions.flush(agent.session)
+      await workspace?.attachSession(sessionId)
+      await context.attachSession(String(sessionId))
+      await turnSettled
       if (signal.aborted) throw signal.reason
       await this.ctx.sessions.flush(agent.session)
       const outcome = summarize(agent.session.events, firstSeq)

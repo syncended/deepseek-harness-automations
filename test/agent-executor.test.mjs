@@ -15,6 +15,8 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   let resolvedWorkspacePath
   const workspaceSessions = []
   const attachmentOrder = []
+  const sessionEventListeners = new Set()
+  let promptFlushed = false
   const session = { seq: 0, events: [] }
   const agent = {
     session,
@@ -32,10 +34,17 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
         { seq: 3, type: 'turn/end', data: { reason: { kind: 'completed' } } },
       )
       session.seq = 4
+      attachmentOrder.push('prompt')
+      for (const listener of sessionEventListeners) listener(session, session.events[0])
     },
     cancel() {},
   }
   const ctx = {
+    on(event, listener) {
+      assert.equal(event, 'session/event')
+      sessionEventListeners.add(listener)
+      return () => sessionEventListeners.delete(listener)
+    },
     agentDefaultModel: {
       currentSelection: () => ({ provider: 'test-provider', model: 'test-model' }),
     },
@@ -62,9 +71,14 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
     sessions: {
       flush: async (flushed) => {
         persistedEvents = flushed.events.map((event) => structuredClone(event))
+        if (!promptFlushed && persistedEvents.some((event) => event.type === 'user/message')) {
+          promptFlushed = true
+          attachmentOrder.push('flush')
+        }
       },
     },
   }
+  agent.ctx = ctx
   const projectPolicy = {
     authorize: async () => cwd,
   }
@@ -99,6 +113,7 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   assert.equal(result.sessionId, attached[0])
   assert.equal(resolvedWorkspacePath, cwd)
   assert.deepEqual(workspaceSessions, [result.sessionId])
-  assert.deepEqual(attachmentOrder, ['workspace', 'run'])
+  assert.deepEqual(attachmentOrder, ['prompt', 'flush', 'workspace', 'run'])
+  assert.equal(sessionEventListeners.size, 0)
   assert.equal(result.output, 'done')
 })
