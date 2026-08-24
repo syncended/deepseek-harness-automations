@@ -83,6 +83,7 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
     authorize: async () => cwd,
   }
   const executor = new HarnessAgentExecutor(ctx, projectPolicy)
+  const registered = []
   const attached = []
   const result = await executor.execute({
     run: {
@@ -96,6 +97,9 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
       },
     },
     signal: new AbortController().signal,
+    registerSession: async (sessionId) => {
+      registered.push(sessionId)
+    },
     attachSession: async (sessionId) => {
       attached.push(sessionId)
       attachmentOrder.push('run')
@@ -109,6 +113,7 @@ test('records a visible prompt and attaches the session to its DSH workspace', a
   assert.ok(persistedPrompt, 'the prompt must be present in durable session events')
   assert.deepEqual(persistedPrompt.data.source, { kind: 'user' })
   assert.deepEqual(persistedPrompt.data.content, [{ type: 'text', text: 'Run the visible task.' }])
+  assert.deepEqual(registered, [result.sessionId])
   assert.equal(attached.length, 1)
   assert.equal(result.sessionId, attached[0])
   assert.equal(resolvedWorkspacePath, cwd)

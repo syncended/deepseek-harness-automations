@@ -169,6 +169,45 @@ test('renders CJK preset metadata with stable English identifiers', async () => 
   assert.ok((source.match(/agentPresetDisplayLabel\(/g) ?? []).length >= 3)
 })
 
+test('marks only unambiguous automation session titles for history badges', async () => {
+  const { plugin, source } = await loadClientPlugin()
+  const snapshot = {
+    ids: ['auto-1', 'auto-2', 'manual-1'],
+    byId: {
+      'auto-1': { displayTitle: 'Nightly sync', blank: false },
+      'auto-2': { displayTitle: 'Nightly sync', blank: false },
+      'manual-1': { displayTitle: 'Planning', blank: false },
+    },
+  }
+  assert.deepEqual(
+    Array.from(plugin.__testing.automationMarkableTitles(snapshot, new Set(['auto-1', 'auto-2']))),
+    ['Nightly sync'],
+  )
+
+  snapshot.ids.push('manual-2')
+  snapshot.byId['manual-2'] = { displayTitle: 'Nightly sync', blank: false }
+  assert.deepEqual(
+    Array.from(plugin.__testing.automationMarkableTitles(snapshot, new Set(['auto-1', 'auto-2']))),
+    [],
+  )
+  const status = { tagName: 'SPAN', childElementCount: 1, textContent: 'Running' }
+  const title = { tagName: 'SPAN', childElementCount: 0, textContent: 'Running' }
+  const time = { tagName: 'SPAN', childElementCount: 0, textContent: 'now' }
+  assert.equal(plugin.__testing.automationHistoryRowTitle({
+    tagName: 'DIV',
+    children: [status, title, time],
+  }), title)
+  const searchTitle = { tagName: 'SPAN', childElementCount: 0, textContent: 'Nightly sync' }
+  assert.equal(plugin.__testing.automationHistoryRowTitle({
+    tagName: 'BUTTON',
+    children: [{ tagName: 'SPAN', childElementCount: 2, children: [status, searchTitle] }],
+  }), searchTitle)
+  assert.match(source, /apiFetch\("\/sessions"/)
+  assert.match(source, /data-dsh-automation-history/)
+  assert.match(source, /observer\.observe\(document\.body/)
+  assert.match(source, /aria-selected/)
+})
+
 test('presents permission presets with distinct DSH icons and plain-language detail', async () => {
   const { plugin, source } = await loadClientPlugin()
   const readOnly = plugin.permissionPresetPresentation('read-only')
@@ -415,7 +454,7 @@ test('uses an editable selector backed by Harness workspaces', async () => {
   assert.equal(customTree.children[0].children[1].props.role, 'combobox')
   assert.equal(customTree.children[0].children[1].props.list, undefined)
 
-  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces'])
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces', 'sessions'])
   assert.match(source, /label: "Workspace"/)
   assert.match(source, /workspaceRuntime: ctx\.workspaces/)
   assert.match(source, /workspaceTouchedRef\.current/)
@@ -542,7 +581,7 @@ test('opens Automations as a disposable center workspace while retaining Setting
   const { plugin } = await loadClientPlugin()
   const harness = createClientContext()
 
-  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces'])
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces', 'sessions'])
   plugin.apply(harness.ctx)
 
   assert.deepEqual(

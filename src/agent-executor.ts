@@ -192,6 +192,7 @@ export class HarnessAgentExecutor implements AutomationExecutor {
     }
     signal.addEventListener('abort', cancel, { once: true })
     try {
+      await context.registerSession(String(sessionId))
       if (signal.aborted) throw signal.reason
       await agent.whenIdle()
       if (signal.aborted) throw signal.reason

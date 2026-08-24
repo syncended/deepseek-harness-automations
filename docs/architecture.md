@@ -45,7 +45,8 @@ The store owns one versioned document:
 - `jobs`: versioned user definitions plus the durable `nextRunAt` watermark;
 - `runs`: orchestration state and immutable execution snapshots;
 - `runOrder`: stable history ordering;
-- `occurrences`: idempotency key → run id.
+- `occurrences`: idempotency key → run id;
+- `automationSessionIds`: append-only provenance independent of bounded run history, with its own revision for compact badge polling.
 
 Every writer mutation:
 

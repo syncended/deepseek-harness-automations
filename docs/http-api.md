@@ -12,6 +12,7 @@ X-DSH-Automation-Client: 1
 ## Read
 
 - `GET /api/automations?limit=100` — jobs and newest-first run history.
+- `GET /api/automations/sessions?revision=N` — durable automation-created session ids used by history badges; unchanged revisions return no repeated id list.
 - `GET /api/automations/meta` — current model directory, permission presets, and agent presets.
 
 ## Jobs

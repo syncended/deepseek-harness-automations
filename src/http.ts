@@ -97,6 +97,16 @@ function requiredQueryString(url: URL, name: string): string {
   return value
 }
 
+function parseAutomationSessionsRevision(url: URL): number | undefined {
+  const raw = url.searchParams.get('revision')
+  if (raw === null) return undefined
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new AutomationInputError('revision must be a non-negative safe integer')
+  }
+  return value
+}
+
 function parseLimit(url: URL): number {
   const raw = url.searchParams.get('limit')
   if (raw === null) return 100
@@ -126,6 +136,21 @@ export function createAutomationHttpHandler(
           ...snapshot,
           // Executor snapshots remain durable server-side but need not duplicate prompts in API responses.
           runs: snapshot.runs.map(publicRun),
+        })
+      }
+      if (parts.length === 1 && parts[0] === 'sessions') {
+        if (method !== 'GET') return methodNotAllowed(response, ['GET'])
+        const snapshot = service.snapshot(1)
+        const revision = parseAutomationSessionsRevision(url)
+        if (revision === snapshot.automationSessionsRevision) {
+          return sendJson(response, 200, {
+            revision: snapshot.automationSessionsRevision,
+            unchanged: true,
+          })
+        }
+        return sendJson(response, 200, {
+          revision: snapshot.automationSessionsRevision,
+          sessionIds: snapshot.automationSessionIds,
         })
       }
       if (parts.length === 1 && parts[0] === 'meta') {

@@ -12,6 +12,8 @@ function service() {
         revision: 1,
         jobs: [],
         runs: [{ id: 'run-1', status: 'succeeded', snapshot: { task: { prompt: 'sensitive-prompt' } } }],
+        automationSessionIds: ['session-automation'],
+        automationSessionsRevision: 7,
         limit,
       }
     },
@@ -60,6 +62,22 @@ test('serves snapshots and validates list limits', async (t) => {
   assert.equal(Object.hasOwn(body.runs[0], 'snapshot'), false)
   assert.equal(JSON.stringify(body).includes('sensitive-prompt'), false)
   assert.equal((await fetch(`${base}?limit=0`)).status, 400)
+})
+
+test('serves the durable automation session provenance index', async (t) => {
+  const { base } = await withServer(t)
+  const response = await fetch(`${base}/sessions`)
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    revision: 7,
+    sessionIds: ['session-automation'],
+  })
+  assert.deepEqual(await (await fetch(`${base}/sessions?revision=7`)).json(), {
+    revision: 7,
+    unchanged: true,
+  })
+  assert.equal((await fetch(`${base}/sessions?revision=-1`)).status, 400)
+  assert.equal((await fetch(`${base}/sessions`, { method: 'POST' })).status, 405)
 })
 
 test('serves exact-model reasoning metadata with validated query parameters', async (t) => {

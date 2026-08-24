@@ -9,6 +9,7 @@ A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence s
 - Standard five-field cron expressions with `UTC` or IANA timezones.
 - Per-job workspace, provider/model, reasoning effort, agent preset, permission preset, and timeout.
 - Enable/disable, Run now, edit, delete, cancel, and recent run history from a full center workspace opened by the main **Automations** sidebar action, or from **Settings → Automations**.
+- Compact **Auto** badges distinguish automation-created chats in regular and searched session history.
 - Overlap policies:
   - `skip` — record and skip an occurrence while the job has queued/running work.
   - `queue` — serialize occurrences for the same job.

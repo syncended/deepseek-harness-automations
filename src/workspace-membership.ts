@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { Workspace, WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { AUTOMATION_PLUGIN_ID, type AutomationRun } from './types.js'
@@ -49,31 +49,30 @@ export async function reconcileAutomationWorkspaceMembership(
   }
 }
 
-// v0.8.2 made automation prompts user-visible but did not yet attach their
-// sessions to workspaces. That release boundary lets the one-time migration
-// recover sessions even when their bounded run and job records are gone.
-const VISIBLE_AUTOMATION_PROMPT_RELEASED_AT = Date.parse('2026-08-24T12:56:39.000Z')
+// Plugin-sourced first prompts are the only unambiguous historical marker.
+// Visible user-sourced prompts are recovered from retained run records instead
+// of permanently labelling unrelated headless/preset sessions by heuristic.
+function isAutomationSession(events: readonly SessionEvent[]): boolean {
+  const firstUserMessage = events.find((event) => event.type === 'user/message')
+  return firstUserMessage?.type === 'user/message'
+    && firstUserMessage.data.source.kind === 'plugin'
+    && firstUserMessage.data.source.plugin === AUTOMATION_PLUGIN_ID
+}
 
-function isAutomationSession(events: readonly SessionEvent[], header: SessionHeader): boolean {
-  return events.some((event) => {
-    if (event.type !== 'user/message') return false
-    const source = event.data.source
-    if (source.kind === 'plugin' && source.plugin === AUTOMATION_PLUGIN_ID) return true
-    return source.kind === 'user'
-      && !('rpcId' in source)
-      && header.agentPreset !== undefined
-      && header.createdAt >= VISIBLE_AUTOMATION_PROMPT_RELEASED_AT
-  })
+export interface AutomationWorkspaceBackfillResult {
+  complete: boolean
+  sessionIds: SessionId[]
 }
 
 /** One-time discovery for automation sessions already pruned from bounded run history. */
 export async function backfillPrunedAutomationWorkspaceMembership(
   ctx: Context,
   logger: WorkspaceReconcileLogger,
-): Promise<boolean> {
+): Promise<AutomationWorkspaceBackfillResult> {
   const registry = automationWorkspaceRegistry(ctx)
   const grouped = new Set(registry.list().flatMap((workspace) => workspace.sessionIds))
   const workspaceByCwd = new Map<string, Workspace | undefined>()
+  const sessionIds: SessionId[] = []
   let complete = true
   let headers
   try {
@@ -81,11 +80,25 @@ export async function backfillPrunedAutomationWorkspaceMembership(
   } catch (error) {
     logger.warn('automations: could not list persisted sessions for workspace migration')
     logger.warn(error instanceof Error ? error.stack ?? error.message : String(error))
-    return false
+    return { complete: false, sessionIds }
   }
 
   for (const header of headers) {
-    if (header.cwd === undefined || grouped.has(header.id)) continue
+    if (header.cwd === undefined) continue
+    let automationSession = false
+    try {
+      const inspection = await ctx.sessionPersistence.inspect(header.id)
+      automationSession = isAutomationSession(inspection.events)
+    } catch (error) {
+      complete = false
+      logger.warn('automations: could not inspect persisted session %s during workspace migration', header.id)
+      logger.warn(error instanceof Error ? error.stack ?? error.message : String(error))
+      continue
+    }
+    if (!automationSession) continue
+    sessionIds.push(header.id)
+    if (grouped.has(header.id)) continue
+
     let workspace = workspaceByCwd.get(header.cwd)
     if (!workspaceByCwd.has(header.cwd)) {
       try {
@@ -101,8 +114,6 @@ export async function backfillPrunedAutomationWorkspaceMembership(
     if (workspace === undefined) continue
 
     try {
-      const inspection = await ctx.sessionPersistence.inspect(header.id)
-      if (!isAutomationSession(inspection.events, header)) continue
       await workspace.attachSession(header.id)
       grouped.add(header.id)
     } catch (error) {
@@ -111,5 +122,5 @@ export async function backfillPrunedAutomationWorkspaceMembership(
       logger.warn(error instanceof Error ? error.stack ?? error.message : String(error))
     }
   }
-  return complete
+  return { complete, sessionIds }
 }

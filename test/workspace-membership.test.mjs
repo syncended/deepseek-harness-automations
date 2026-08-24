@@ -85,6 +85,10 @@ test('backfills pruned legacy automation sessions from session persistence once'
     { id: 'session-no-cwd', createdAt: afterVisiblePrompts },
   ]
   const messages = new Map([
+    ['session-grouped', {
+      source: { kind: 'plugin', plugin: '@syncended/dsh-automations' },
+      text: 'Already grouped task',
+    }],
     ['session-legacy', {
       source: { kind: 'plugin', plugin: '@syncended/dsh-automations' },
       text: 'Legacy task',
@@ -105,27 +109,40 @@ test('backfills pruned legacy automation sessions from session persistence once'
         inspected.push(sessionId)
         const message = messages.get(sessionId)
         return {
-          events: [{
-            type: 'user/message',
-            data: {
-              source: message.source,
-              content: [{ type: 'text', text: message.text }],
+          events: [
+            {
+              type: 'user/message',
+              data: {
+                source: message.source,
+                content: [{ type: 'text', text: message.text }],
+              },
             },
-          }],
+            ...(sessionId === 'session-ui'
+              ? [{
+                  type: 'user/message',
+                  data: {
+                    source: { kind: 'user' },
+                    content: [{ type: 'text', text: 'Injected reminder' }],
+                  },
+                }]
+              : []),
+          ],
         }
       },
     },
   }
 
-  const complete = await backfillPrunedAutomationWorkspaceMembership(ctx, { warn() {} })
+  const result = await backfillPrunedAutomationWorkspaceMembership(ctx, { warn() {} })
 
-  assert.equal(complete, true)
+  assert.equal(result.complete, true)
+  assert.deepEqual(result.sessionIds, ['session-grouped', 'session-legacy'])
   assert.deepEqual(inspected, [
+    'session-grouped',
     'session-legacy',
     'session-v082',
     'session-ui',
     'session-headless',
     'session-normal',
   ])
-  assert.deepEqual(attached, ['session-legacy', 'session-v082'])
+  assert.deepEqual(attached, ['session-legacy'])
 })

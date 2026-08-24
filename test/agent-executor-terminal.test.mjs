@@ -12,6 +12,7 @@ test('fails promptly when a turn ends before recording the automation prompt', a
 
   const listeners = new Set()
   const session = { seq: 0, events: [] }
+  let provenanceRegistered = false
   let workspaceAttached = false
   let runAttached = false
   const agent = {
@@ -82,12 +83,16 @@ test('fails promptly when a turn ends before recording the automation prompt', a
         },
       },
       signal: new AbortController().signal,
+      registerSession: async () => {
+        provenanceRegistered = true
+      },
       attachSession: async () => {
         runAttached = true
       },
     }),
     { message: 'pre-step failed', code: 'PRE_STEP_FAILED' },
   )
+  assert.equal(provenanceRegistered, true)
   assert.equal(workspaceAttached, false)
   assert.equal(runAttached, false)
   assert.equal(listeners.size, 0)

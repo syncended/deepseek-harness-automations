@@ -183,6 +183,9 @@ export function decodeAutomationState(value: unknown): AutomationState {
   const runsInput = record(input.runs, 'state.runs')
   const occurrencesInput = record(input.occurrences, 'state.occurrences')
   if (!Array.isArray(input.runOrder)) throw new AutomationStateError('state.runOrder must be an array')
+  if (input.automationSessionIds !== undefined && !Array.isArray(input.automationSessionIds)) {
+    throw new AutomationStateError('state.automationSessionIds must be an array')
+  }
 
   const jobs = Object.fromEntries(Object.entries(jobsInput).map(([key, job]) => [key, decodeJob(job, key)]))
   const runs = Object.fromEntries(Object.entries(runsInput).map(([key, run]) => [key, decodeRun(run, key)]))
@@ -191,6 +194,19 @@ export function decodeAutomationState(value: unknown): AutomationState {
   if (runOrder.length !== Object.keys(runs).length || runOrder.some((id) => runs[id] === undefined)) {
     throw new AutomationStateError('state.runOrder must contain every run exactly once')
   }
+  const storedAutomationSessionIds = input.automationSessionIds === undefined
+    ? []
+    : input.automationSessionIds.map((id, index) => text(id, `state.automationSessionIds[${index}]`))
+  if (new Set(storedAutomationSessionIds).size !== storedAutomationSessionIds.length) {
+    throw new AutomationStateError('state.automationSessionIds contains duplicate ids')
+  }
+  const automationSessionIds = [...new Set([
+    ...storedAutomationSessionIds,
+    ...Object.values(runs).flatMap((run) => run.sessionId === undefined ? [] : [run.sessionId]),
+  ])]
+  const automationSessionsRevision = input.automationSessionsRevision === undefined
+    ? (automationSessionIds.length === 0 ? 0 : 1)
+    : nonNegativeInteger(input.automationSessionsRevision, 'state.automationSessionsRevision')
   const occurrences: Record<string, string> = {}
   for (const [occurrenceKey, runIdValue] of Object.entries(occurrencesInput)) {
     const runId = text(runIdValue, `state.occurrences.${occurrenceKey}`)
@@ -212,6 +228,8 @@ export function decodeAutomationState(value: unknown): AutomationState {
     workspaceMembershipMigrationVersion: input.workspaceMembershipMigrationVersion === undefined
       ? 0
       : nonNegativeInteger(input.workspaceMembershipMigrationVersion, 'state.workspaceMembershipMigrationVersion'),
+    automationSessionIds,
+    automationSessionsRevision,
     revision: nonNegativeInteger(input.revision, 'state.revision'),
     jobs,
     runs,

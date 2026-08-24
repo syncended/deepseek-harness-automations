@@ -14,6 +14,7 @@ import { HarnessAgentExecutor } from './agent-executor.js'
 import { createAutomationHttpHandler } from './http.js'
 import { ProjectPolicy } from './project-policy.js'
 import { AutomationScheduler } from './scheduler.js'
+import { registerAutomationSession } from './state.js'
 import { AutomationStateStore } from './store.js'
 import {
   type AutomationExecutor,
@@ -116,12 +117,13 @@ export class AutomationService extends Service implements AutomationServiceApi {
       this.ctx.logger,
     )
     if (openedState.workspaceMembershipMigrationVersion < WORKSPACE_MEMBERSHIP_MIGRATION_VERSION) {
-      const complete = await backfillPrunedAutomationWorkspaceMembership(this.ctx, this.ctx.logger)
-      if (complete) {
-        await this.store.mutate((state) => {
+      const backfill = await backfillPrunedAutomationWorkspaceMembership(this.ctx, this.ctx.logger)
+      await this.store.mutate((state) => {
+        for (const sessionId of backfill.sessionIds) registerAutomationSession(state, String(sessionId))
+        if (backfill.complete) {
           state.workspaceMembershipMigrationVersion = WORKSPACE_MEMBERSHIP_MIGRATION_VERSION
-        })
-      }
+        }
+      })
     }
     const unregisterExecutor = this.scheduler.registerExecutor(
       new HarnessAgentExecutor(this.ctx, this.projectPolicy),

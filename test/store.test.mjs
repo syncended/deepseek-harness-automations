@@ -15,6 +15,8 @@ test('defaults the workspace migration marker in pre-0.8.3 state', () => {
     occurrences: {},
   })
   assert.equal(state.workspaceMembershipMigrationVersion, 0)
+  assert.deepEqual(state.automationSessionIds, [])
+  assert.equal(state.automationSessionsRevision, 0)
 })
 
 function spec(cwd) {
@@ -83,6 +85,8 @@ test('retains active runs while pruning oldest terminal history', async () => {
   const store = new AutomationStateStore(path, 10)
   await store.open(new Date())
   await store.mutate((state) => {
+    state.automationSessionIds.push('session-from-pruned-run')
+    state.automationSessionsRevision = 1
     const now = new Date().toISOString()
     const jobSpec = spec(root)
     for (let index = 0; index < 12; index += 1) {
@@ -109,5 +113,7 @@ test('retains active runs while pruning oldest terminal history', async () => {
   assert.ok(state.runs['run-0'])
   assert.equal(Object.values(state.runs).filter((run) => run.status === 'succeeded').length, 10)
   assert.equal(state.runs['run-1'], undefined)
+  assert.deepEqual(state.automationSessionIds, ['session-from-pruned-run'])
+  assert.equal(state.automationSessionsRevision, 1)
   await store.close()
 })

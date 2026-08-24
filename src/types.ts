@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 export const STATE_SCHEMA_VERSION = 1 as const
-export const WORKSPACE_MEMBERSHIP_MIGRATION_VERSION = 1 as const
+export const WORKSPACE_MEMBERSHIP_MIGRATION_VERSION = 2 as const
 export const AUTOMATION_PLUGIN_ID = '@syncended/dsh-automations' as const
 
 export type OverlapPolicy = 'skip' | 'queue' | 'allow'
@@ -101,6 +101,10 @@ export interface AutomationRun {
 export interface AutomationState {
   schemaVersion: typeof STATE_SCHEMA_VERSION
   workspaceMembershipMigrationVersion: number
+  /** Durable provenance index retained independently of bounded run history. */
+  automationSessionIds: string[]
+  /** Changes only when a new provenance id is added. */
+  automationSessionsRevision: number
   revision: number
   jobs: Record<string, AutomationJob>
   runs: Record<string, AutomationRun>
@@ -114,6 +118,8 @@ export interface AutomationSnapshot {
   revision: number
   jobs: AutomationJob[]
   runs: AutomationRun[]
+  automationSessionIds: string[]
+  automationSessionsRevision: number
 }
 
 export interface CreateAutomationJobRequest {
@@ -134,7 +140,9 @@ export interface ExecutorRunResult {
 export interface AutomationExecutorContext {
   run: AutomationRun
   signal: AbortSignal
-  /** Persist the session id as soon as the Harness session exists. */
+  /** Persist automation provenance as soon as the Harness session exists. */
+  registerSession(sessionId: string): Promise<void>
+  /** Publish the session link after its visible prompt is durable. */
   attachSession(sessionId: string): Promise<void>
 }
 

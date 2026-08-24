@@ -58,7 +58,9 @@ test('runs a manual occurrence through the registered executor', async (t) => {
   const { root, scheduler } = await fixture(t)
   scheduler.registerExecutor({
     kind: 'agent',
-    async execute({ run, attachSession }) {
+    async execute({ run, registerSession, attachSession }) {
+      await registerSession('session-test')
+      await registerSession('session-test')
       await attachSession('session-test')
       return { sessionId: 'session-test', output: `done:${run.jobId}` }
     },
@@ -74,6 +76,8 @@ test('runs a manual occurrence through the registered executor', async (t) => {
   )
   assert.equal(run.sessionId, 'session-test')
   assert.equal(run.output, `done:${job.id}`)
+  assert.deepEqual(scheduler.snapshot().automationSessionIds, ['session-test'])
+  assert.equal(scheduler.snapshot().automationSessionsRevision, 1)
 })
 
 test('rejects invalid specs before they can poison durable state', async (t) => {

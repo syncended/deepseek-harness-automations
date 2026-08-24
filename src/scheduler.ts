@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { latestCronOccurrence, nextCronOccurrence } from './cron.js'
-import { activeRunsForJob, isTerminalRunStatus, orderedJobs, orderedRuns } from './state.js'
+import {
+  activeRunsForJob,
+  isTerminalRunStatus,
+  orderedJobs,
+  orderedRuns,
+  registerAutomationSession,
+} from './state.js'
 import { AutomationStateStore } from './store.js'
 import {
   AutomationInputError,
@@ -182,6 +188,8 @@ export class AutomationScheduler {
       revision: state.revision,
       jobs: orderedJobs(state),
       runs: orderedRuns(state, limit),
+      automationSessionIds: [...state.automationSessionIds],
+      automationSessionsRevision: state.automationSessionsRevision,
     }
   }
 
@@ -508,11 +516,17 @@ export class AutomationScheduler {
       const result = await executor.execute({
         run,
         signal: controller.signal,
+        registerSession: async (sessionId) => {
+          await this.store.mutate((state) => {
+            registerAutomationSession(state, sessionId)
+          })
+        },
         attachSession: async (sessionId) => {
           await this.store.mutate((state) => {
             const current = state.runs[run.id]
             if (current === undefined || current.status !== 'running') return
             current.sessionId = sessionId
+            registerAutomationSession(state, sessionId)
           })
         },
       })
@@ -522,7 +536,10 @@ export class AutomationScheduler {
         if (current === undefined || current.status !== 'running') return
         current.status = 'succeeded'
         current.finishedAt = this.clock.now().toISOString()
-        if (result.sessionId !== undefined) current.sessionId = result.sessionId
+        if (result.sessionId !== undefined) {
+          current.sessionId = result.sessionId
+          registerAutomationSession(state, result.sessionId)
+        }
         const output = boundedOutput(result.output, this.maxOutputChars)
         if (output !== undefined) current.output = output
       })

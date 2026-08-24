@@ -23,12 +23,21 @@ export function createEmptyState(): AutomationState {
   return {
     schemaVersion: STATE_SCHEMA_VERSION,
     workspaceMembershipMigrationVersion: 0,
+    automationSessionIds: [],
+    automationSessionsRevision: 0,
     revision: 0,
     jobs: {},
     runs: {},
     runOrder: [],
     occurrences: {},
   }
+}
+
+export function registerAutomationSession(state: AutomationState, sessionId: string): boolean {
+  if (state.automationSessionIds.includes(sessionId)) return false
+  state.automationSessionIds.push(sessionId)
+  state.automationSessionsRevision += 1
+  return true
 }
 
 export function orderedJobs(state: AutomationState): AutomationJob[] {
