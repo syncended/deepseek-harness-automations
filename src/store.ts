@@ -1,4 +1,4 @@
-import { mkdir, readFile } from 'node:fs/promises'
+import { link, lstat, mkdir, readFile, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { normalizeJobId, normalizeJobSpec } from './validation.js'
@@ -242,6 +242,78 @@ function isEnoent(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return !(typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH')
+  }
+}
+
+/**
+ * Recover a writer lock left behind by a process that no longer exists.
+ *
+ * The atomic-write package deliberately leaves orphan recovery to its caller.
+ * Automations owns a long-lived state file, so a host crash must not make every
+ * subsequent Harness boot require manual lock-file cleanup. A live or
+ * malformed owner is never disturbed. A fixed hard-link claim ensures only one
+ * recovering process can unlink the orphan and pins the exact inode being
+ * checked, so a concurrently acquired writer lock cannot be removed.
+ */
+export async function recoverOrphanedWriterLock(path: string): Promise<boolean> {
+  const lockPath = `${path}.lock`
+  const recoveryPath = `${lockPath}.recovery`
+  let ownerText: string
+  try {
+    ownerText = await readFile(lockPath, 'utf8')
+  } catch (error) {
+    if (isEnoent(error)) return false
+    throw error
+  }
+
+  const owner = ownerText.trim()
+  if (!/^[1-9]\d*$/.test(owner)) return false
+  const pid = Number(owner)
+  if (!Number.isSafeInteger(pid) || processIsAlive(pid)) return false
+
+  try {
+    await link(lockPath, recoveryPath)
+  } catch (error) {
+    if (isEnoent(error)) return false
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') {
+      return false
+    }
+    throw error
+  }
+
+  try {
+    const [lockStat, recoveryStat, confirmedOwnerText] = await Promise.all([
+      lstat(lockPath),
+      lstat(recoveryPath),
+      readFile(recoveryPath, 'utf8'),
+    ])
+    if (
+      lockStat.dev !== recoveryStat.dev
+      || lockStat.ino !== recoveryStat.ino
+      || confirmedOwnerText !== ownerText
+      || processIsAlive(pid)
+    ) return false
+
+    await unlink(lockPath)
+    return true
+  } catch (error) {
+    if (isEnoent(error)) return false
+    throw error
+  } finally {
+    try {
+      await unlink(recoveryPath)
+    } catch (error) {
+      if (!isEnoent(error)) throw error
+    }
+  }
+}
+
 async function readStateFile(path: string): Promise<AutomationState> {
   let text
   try {
@@ -277,6 +349,7 @@ export class AutomationStateStore {
 
   async open(now: Date): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
+    await recoverOrphanedWriterLock(this.path)
     await this.enqueue(async () => {
       await withFileLock(this.path, async () => {
         const state = await readStateFile(this.path)

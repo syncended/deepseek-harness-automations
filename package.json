@@ -1,6 +1,6 @@
 {
   "name": "@syncended/dsh-automations",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "description": "Durable cron automations for DeepSeek Harness",
   "type": "module",
   "main": "dist/index.js",

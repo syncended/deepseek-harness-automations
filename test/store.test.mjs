@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { AutomationStateStore, decodeAutomationState } from '../dist/store.js'
+import {
+  AutomationStateStore,
+  decodeAutomationState,
+  recoverOrphanedWriterLock,
+} from '../dist/store.js'
 
 test('defaults the workspace migration marker in pre-0.8.3 state', () => {
   const state = decodeAutomationState({
@@ -77,6 +81,40 @@ test('atomically persists private state and marks crash-orphaned runs interrupte
   assert.equal(run.error.code, 'HOST_RESTARTED')
   assert.equal(run.finishedAt, '2026-01-01T01:00:00.000Z')
   await restored.close()
+})
+
+test('recovers a writer lock orphaned by a dead process before opening', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-automations-orphan-lock-'))
+  const path = join(root, 'state.json')
+  await writeFile(`${path}.lock`, '2147483647\n')
+
+  const store = new AutomationStateStore(path, 100)
+  await store.open(new Date())
+  await assert.rejects(stat(`${path}.lock`), { code: 'ENOENT' })
+  await store.close()
+})
+
+test('does not recover a writer lock owned by a live process', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-automations-live-lock-'))
+  const path = join(root, 'state.json')
+  await writeFile(`${path}.lock`, `${process.pid}\n`)
+
+  assert.equal(await recoverOrphanedWriterLock(path), false)
+  assert.equal(await readFile(`${path}.lock`, 'utf8'), `${process.pid}\n`)
+  await rm(`${path}.lock`)
+})
+
+test('serializes concurrent orphan recovery without touching a replacement lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-automations-concurrent-recovery-'))
+  const path = join(root, 'state.json')
+  await writeFile(`${path}.lock`, '2147483647\n')
+
+  const recovered = await Promise.all(
+    Array.from({ length: 10 }, () => recoverOrphanedWriterLock(path)),
+  )
+  assert.equal(recovered.filter(Boolean).length, 1)
+  await assert.rejects(stat(`${path}.lock`), { code: 'ENOENT' })
+  await assert.rejects(stat(`${path}.lock.recovery`), { code: 'ENOENT' })
 })
 
 test('retains active runs while pruning oldest terminal history', async () => {
