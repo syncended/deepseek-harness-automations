@@ -28,7 +28,7 @@ The job selects an existing DSH permission preset rather than independently inve
 - `workspace-write`: writes only under the Session workspace; widening requires approval;
 - `danger-full-access`: unrestricted file effects and no approval prompts.
 
-Scheduled Agents are not attached to an interactive browser ownership chain. A policy that needs a human prompt must therefore be expected to reject/unavailable when nobody can answer. Jobs should be designed for deterministic unattended behavior and should normally use `read-only` or `workspace-write`.
+Scheduled Agents are not attached to an interactive browser ownership chain. A policy that needs a human prompt should therefore be expected to reject the operation or leave it unavailable when nobody can answer. Jobs should be designed for deterministic unattended behavior and should normally use `read-only` or `workspace-write`.
 
 ## Secrets and persisted data
 
@@ -44,7 +44,7 @@ The store guarantees complete-file replacement, not fsync durability. After a ho
 - `running` runs become `interrupted`;
 - interrupted runs are not retried automatically.
 
-This avoids silently repeating side effects but does not provide exactly-once execution. Tasks that call external systems should carry their own stable idempotency key (for example, the automation occurrence key) whenever the target supports one.
+This avoids silently repeating side effects but does not provide exactly-once execution. Occurrence keys are internal orchestration metadata and are not injected into the agent prompt. Tasks that call external systems should define and carry their own stable idempotency key whenever the target supports one.
 
 ## Code and future workflows
 

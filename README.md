@@ -4,6 +4,10 @@ A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence s
 
 > **Status:** MVP for `@deepseek-ai/dsh` `0.1.1-rc.2`. The current worker is single-host. Cron admission and run history are durable; an already-started run is deliberately **not** retried after a host crash.
 
+<p align="center">
+  <img src="./docs/assets/automation-editor.png" width="920" alt="DeepSeek Harness New automation editor" />
+</p>
+
 ## What works
 
 - Standard five-field cron expressions with `UTC` or IANA timezones.
@@ -25,7 +29,12 @@ The in-box `@deepseek-ai/dsh-schedule` plugin remains the right tool for reminde
 
 ## Install
 
-Requirements: Node.js 22+ and a working `dsh web` profile.
+Requirements:
+
+- Node.js 22 or newer.
+- DeepSeek Harness `0.1.1-rc.2` or a compatible release with a working `dsh web` profile.
+- At least one configured provider/model route and usable agent and permission presets.
+- pnpm 11 through Corepack only when installing from a source checkout.
 
 From npm:
 
@@ -38,12 +47,13 @@ Or from this checkout:
 ```bash
 pnpm install
 pnpm check
-pnpm build
 
 dsh plugin --profile web add .
 ```
 
-The package declares a DSH bundle, so `dsh plugin` appends it to the Web profile automatically. Restart the running Web Harness after the initial install, then refresh the page. Open the full **Automations** workspace from the main sidebar, or use **Settings → Automations**.
+The package declares a DSH bundle, so `dsh plugin` appends it to the Web profile automatically. Restart the running `dsh web` process after installing or upgrading, refresh the existing page, and open **Automations** from the main sidebar or **Settings → Automations**. Create a small disabled job first, save it, then use **Run now** to verify the selected model, workspace, and permission preset.
+
+The browser client uses the same-origin `/api/automations` endpoint exposed by that Host. No separate connection URL, token, or plugin-specific environment variable is required; `DSH_HOME` only controls the normal Harness state location.
 
 To remove it:
 
@@ -71,7 +81,7 @@ The form groups common settings into **Task**, **Schedule**, and **Agent & acces
 
 ## Plugin configuration
 
-Defaults are suitable for a local Web profile. Override the bundle row in the profile's `cordis.patch.yml` when needed:
+Defaults are suitable for a local Web profile. Edit the existing `automations` row in `$DSH_HOME/profiles/web/cordis.patch.yml` when needed; do not add a duplicate row with the same id. Restart the Host after changing it:
 
 ```yaml
 - id: automations
@@ -82,11 +92,16 @@ Defaults are suitable for a local Web profile. Override the bundle row in the pr
     maxOutputChars: 65536
     allowedProjectRoots:
       - /home/me/projects
-    # Optional; otherwise $DSH_HOME/automations/state.json
+    # Optional alternate Harness home used only to derive the default state path.
+    # dshHome: /absolute/private/dsh-home
+    # Optional; otherwise <dshHome or $DSH_HOME>/automations/state.json.
+    # A leading ~ is expanded; the resulting path must be absolute.
     # statePath: /absolute/private/path/state.json
 ```
 
-`allowedProjectRoots: []` means the plugin accepts any existing directory the Harness host account can resolve. Configure one or more roots when the Web surface is exposed beyond a trusted local machine.
+`allowedProjectRoots: []` means the plugin accepts any existing directory the Harness host account can resolve. Configure one or more existing roots when the Web surface is exposed beyond a trusted local machine. Roots and job workspaces are canonicalized with `realpath`, so deleted paths and symlink retargeting fail closed.
+
+Validated service ranges: `maxConcurrentRuns` 1–32, `historyLimit` 10–10,000, `misfireGraceMs` 0–86,400,000, and `maxOutputChars` 1,024–1,048,576. Job names are limited to 120 characters, prompts to 131,072 characters, IDs to 63 lowercase letters/digits/hyphens, and timeouts to 1 second–24 hours. Blank model or preset selections resolve against the current Harness defaults at dispatch time, so future runs can follow later default changes.
 
 ## Durable semantics
 
@@ -119,10 +134,6 @@ pnpm check
 ```
 
 The Host plugin is TypeScript in `src/`. The browser half is deliberately plain JavaScript in `lib/client.js`, matching the external DSH Client Plugin loader format and avoiding a dependency on monorepo-only frontend build tooling.
-
-## Architecture and roadmap
-
-See [`docs/architecture.md`](docs/architecture.md). In short, cron is only a trigger. Durable runs call an executor selected by `task.kind`; the next implementation stage adds a `workflow` executor over `ctx.workflowEngine`, followed by a persisted task graph with leases, retries, child-agent references, and resumable code steps.
 
 ## License
 
