@@ -30,6 +30,17 @@ interface RunSummary {
   reason?: TurnEndReason
 }
 
+/** Harness 0.1.2 replaced the public event array with immutable snapshots. */
+function sessionEvents(session: Session): readonly SessionEvent[] {
+  const compatible = session as {
+    snapshotEvents?: () => readonly SessionEvent[]
+    events?: readonly SessionEvent[]
+  }
+  if (typeof compatible.snapshotEvents === 'function') return compatible.snapshotEvents()
+  if (Array.isArray(compatible.events)) return compatible.events
+  throw new AgentRunError('The Harness session has no supported event reader.', 'UNSUPPORTED_SESSION_API')
+}
+
 function summarize(events: readonly SessionEvent[], firstSeq: number): RunSummary {
   let started = false
   let text = ''
@@ -241,11 +252,12 @@ export class HarnessAgentExecutor implements AutomationExecutor {
         agent.followup(prompt)
         turnSettled = agent.whenIdle()
         await Promise.race([promptRecorded.ready, turnSettled])
-        const promptExists = agent.session.events.some(
+        const events = sessionEvents(agent.session)
+        const promptExists = events.some(
           (event) => event.type === 'user/message' && String(event.data.id) === promptId,
         )
         if (!promptExists) {
-          throw failureFromReason(summarize(agent.session.events, firstSeq).reason)
+          throw failureFromReason(summarize(events, firstSeq).reason)
         }
       } finally {
         promptRecorded.dispose()
@@ -256,7 +268,7 @@ export class HarnessAgentExecutor implements AutomationExecutor {
       await turnSettled
       if (signal.aborted) throw signal.reason
       await this.ctx.sessions.flush(agent.session)
-      const outcome = summarize(agent.session.events, firstSeq)
+      const outcome = summarize(sessionEvents(agent.session), firstSeq)
       if (outcome.reason?.kind !== 'completed') throw failureFromReason(outcome.reason)
       return {
         sessionId: String(sessionId),

@@ -2,7 +2,7 @@
 
 A DeepSeek Harness plugin for durable, configurable cron jobs. Each occurrence starts a fresh persisted Harness Agent in a selected workspace with an explicit model route, agent preset, and permission preset.
 
-> **Status:** MVP for `@deepseek-ai/dsh` `0.1.1-rc.2`. The current worker is single-host. Cron admission and run history are durable; an already-started run is deliberately **not** retried after a host crash.
+> **Status:** MVP compatible with `@deepseek-ai/dsh` `0.1.1-rc.2` and `0.1.2-rc.1`. The current worker is single-host. Cron admission and run history are durable; an already-started run is deliberately **not** retried after a host crash.
 
 <p align="center">
   <img src="./docs/assets/automation-editor.png" width="920" alt="DeepSeek Harness New automation editor" />
