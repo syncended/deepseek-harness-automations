@@ -91,7 +91,8 @@ async function loadClientPlugin() {
   return { plugin, source }
 }
 
-function createClientContext() {
+function createClientContext({ panels = false } = {}) {
+  let activePanelId = null
   const registrations = []
   const injections = []
   const injectionControls = []
@@ -117,6 +118,13 @@ function createClientContext() {
   const ctx = {
     workspaces: workspaceRuntime,
     sessions: sessionsRuntime,
+    layout: panels ? {
+      selectPanel(id) {
+        assert.ok(id === null || registrations.some(({ options, disposed }) =>
+          !disposed && options.name === 'main' && options.key === id), 'panel must be registered before selection')
+        activePanelId = id
+      },
+    } : {},
     effect(run, label = '') {
       if (!/center workspace|workspace state/.test(label)) return undefined
       const dispose = run()
@@ -140,7 +148,8 @@ function createClientContext() {
           },
         }
         injectionControls.push(control)
-        control.declare()
+        // Current hosts never declare the removed conversation slot.
+        if (!panels || name !== 'conversation') control.declare()
         return () => control.collapse()
       },
       register(options, component) {
@@ -148,6 +157,7 @@ function createClientContext() {
         registrations.push(registration)
         return () => {
           registration.disposed = true
+          if (options.name === 'main' && options.key === activePanelId) activePanelId = null
         }
       },
     },
@@ -159,6 +169,7 @@ function createClientContext() {
     injectionControls,
     workspaceRuntime,
     sessionsRuntime,
+    usePanelInfo: (selector) => selector({ activePanelId }),
     disposeEffects() {
       for (const dispose of effectDisposers.reverse()) dispose()
     },
@@ -462,7 +473,7 @@ test('uses an editable selector backed by Harness workspaces', async () => {
   assert.equal(customTree.children[0].children[1].props.role, 'combobox')
   assert.equal(customTree.children[0].children[1].props.list, undefined)
 
-  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces', 'sessions'])
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces', 'sessions', 'layout'])
   assert.match(source, /label: "Workspace"/)
   assert.match(source, /workspaceRuntime: ctx\.workspaces/)
   assert.match(source, /workspaceTouchedRef\.current/)
@@ -589,7 +600,7 @@ test('opens Automations as a disposable center workspace while retaining Setting
   const { plugin } = await loadClientPlugin()
   const harness = createClientContext()
 
-  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces', 'sessions'])
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'workspaces', 'sessions', 'layout'])
   plugin.apply(harness.ctx)
 
   assert.deepEqual(
@@ -652,6 +663,54 @@ test('opens Automations as a disposable center workspace while retaining Setting
   assert.equal(reopenedCenter.options.name, 'conversation')
   harness.disposeEffects()
   assert.equal(reopenedCenter.disposed, true)
+})
+
+test('opens a keyed main panel on current hosts and follows layout navigation', async () => {
+  const { plugin } = await loadClientPlugin()
+  const harness = createClientContext({ panels: true })
+  plugin.apply(harness.ctx)
+
+  assert.deepEqual(harness.injections, ['main', 'settings.section', 'sidebar.footer.action'])
+  const center = harness.registrations.find(({ options }) => options.name === 'main')
+  assert.equal(center.options.key, 'automations')
+  assert.equal(center.options.priority, undefined)
+  assert.equal(center.component.name, 'AutomationsWorkspace')
+  assert.equal(center.options.inject().workspaceRuntime, harness.workspaceRuntime)
+  const sidebar = harness.registrations.find(({ options }) => options.name === 'sidebar.footer.action')
+  const renderTrigger = () => sidebar.component({
+    ...sidebar.options.inject(), wide: true, usePanelInfo: harness.usePanelInfo,
+  }).children[0]
+  assert.equal(renderTrigger().props['aria-label'], 'Open Automations')
+  renderTrigger().props.onClick()
+  assert.equal(harness.usePanelInfo((info) => info.activePanelId), 'automations')
+  assert.equal(renderTrigger().props['aria-pressed'], true)
+  assert.equal(renderTrigger().props['aria-label'], 'Exit Automations')
+
+  // Closing uses layout selection, not unregistering the main panel.
+  const workspace = center.component(center.options.inject())
+  workspace.children[0].children[2].props.onClick()
+  assert.equal(harness.usePanelInfo((info) => info.activePanelId), null)
+  assert.equal(center.disposed, false)
+  assert.equal(renderTrigger().props['aria-pressed'], false)
+  renderTrigger().props.onClick()
+  renderTrigger().props.onClick()
+  assert.equal(harness.usePanelInfo((info) => info.activePanelId), null)
+
+  // Navigating to another plugin must clear the sidebar state without
+  // selecting the Conversation over that other plugin.
+  harness.ctx.slots.register({ name: 'main', key: 'other-plugin' }, () => null)
+  renderTrigger().props.onClick()
+  harness.ctx.layout.selectPanel('other-plugin')
+  assert.equal(renderTrigger().props['aria-label'], 'Open Automations')
+  assert.equal(harness.usePanelInfo((info) => info.activePanelId), 'other-plugin')
+
+  renderTrigger().props.onClick()
+  harness.ctx.layout.selectPanel(null) // Includes reselecting the current chat.
+  assert.equal(renderTrigger().props['aria-pressed'], false)
+  renderTrigger().props.onClick()
+  harness.disposeEffects()
+  assert.equal(center.disposed, true)
+  assert.equal(harness.usePanelInfo((info) => info.activePanelId), null)
 })
 
 test('recognizes sidebar session navigation even when the current chat is clicked', async () => {
